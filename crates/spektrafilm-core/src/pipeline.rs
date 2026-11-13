@@ -594,6 +594,53 @@ impl Pipeline {
         }
     }
 
+    /// Borrowed resident rendering with request-local source identity and
+    /// cancellation. Only the engine determines which film parameters invalidate
+    /// its negative-density cache. None still means no resident route exists.
+    pub fn process_resident_with_options(
+        &self,
+        image: &ImageBuf,
+        backend: &dyn ComputeBackend,
+        options: spektrafilm_gpu::FilmRenderOptions<'_>,
+    ) -> Result<Option<ImageBuf>, spektrafilm_gpu::output::OutputError> {
+        options.check_cancelled()?;
+        let out = self.with_resident_params(image, |params| {
+            backend.try_run_film_chain_with_options(params, options)
+        }).transpose()?.flatten();
+        // Successful completion is committed by the backend; a later cancel
+        // must not turn an already-published result into a cancelled request.
+        Ok(out.map(|out| {
+            if backend.resident_chain_applies_post_scan() {
+                out
+            } else {
+                self.apply_post_scan(out)
+            }
+        }))
+    }
+
+    /// Prepare the exact same physical-chain parameters as ordinary rendering
+    /// and lend them to a backend-specific output consumer. Hosts can request
+    /// RGB16 or same-device output without duplicating the film pipeline.
+    /// The input is already at its chosen working resolution, as for
+    /// `process_resident_borrowed`; display crops belong after this full chain.
+    pub fn with_resident_params<R>(
+        &self,
+        image: &ImageBuf,
+        consume: impl FnOnce(&spektrafilm_gpu::FilmChainParams<'_>) -> R,
+    ) -> Option<R> {
+        if self.tc_lut.is_none() && self.mallett_core.is_none() {
+            return None;
+        }
+        let color_ref = crate::color_reference::ColorReference::compute(
+            &self.film,
+            &self.print,
+            &self.params,
+            &self.print_illuminant,
+            self.print_exposure_factor,
+        );
+        self.with_gpu_params(image, &color_ref, consume)
+    }
+
     /// Resize the working image by `io.upscale_factor` (bicubic), mirroring
     /// Python's `ResizingService.crop_and_rescale`. No-op at factor 1.0.
     /// Lets callers trade resolution for speed (the whole pipeline, and the
@@ -633,6 +680,16 @@ impl Pipeline {
         backend: &dyn ComputeBackend,
         color_ref: &crate::color_reference::ColorReference,
     ) -> Option<ImageBuf> {
+        self.with_gpu_params(image, color_ref, |params| backend.try_run_film_chain(params))
+            .flatten()
+    }
+
+    fn with_gpu_params<R>(
+        &self,
+        image: &ImageBuf,
+        color_ref: &crate::color_reference::ColorReference,
+        consume: impl FnOnce(&spektrafilm_gpu::FilmChainParams<'_>) -> R,
+    ) -> Option<R> {
         // Bake the exposure scale (auto-exposure × manual EV compensation)
         // into the front-pass matrix. Both upsamplers (hanatos and mallett)
         // are homogeneous in the input RGB, so scaling the matrix is
@@ -1170,7 +1227,7 @@ impl Pipeline {
             print_exposure_scale,
             output_cctf_encoding: self.params.io.output_cctf_encoding,
         };
-        backend.try_run_film_chain(&params)
+        Some(consume(&params))
     }
 
     /// After the GPU fast path returns linear RGB, apply sRGB encoding + clip

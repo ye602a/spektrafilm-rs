@@ -1,7 +1,7 @@
 # RS physical multilayer GPU grain migration
 
 Date: 2026-11-13
-Status: merged into independent RS main by [PR #6](https://github.com/ye602a/spektrafilm-rs/pull/6), commit `c487cb3a724ae7f6c05d8eac45c86d3394859eda`. Windows compile/CPU and Linux software-Vulkan smoke passed; full IIR hardware qualification and frozen FPW image parity remain pending.
+Status: merged into independent RS main by [PR #6](https://github.com/ye602a/spektrafilm-rs/pull/6), commit `c487cb3a724ae7f6c05d8eac45c86d3394859eda`. Windows compile/CPU, Linux grain regressions and all 1,215 IIR precision cases on software Vulkan have passed; dedicated hardware qualification and frozen FPW image parity remain open.
 
 ## Source and scope
 
@@ -21,9 +21,11 @@ With wide-sigma grain (>=3 pixels), the original precise Vulkan SPIR-V path must
 
 The RS Linux run measured multilayer mean `1.5006471944243458`, variance `0.020058962077850902`, and analytic variance `0.01997501919166667`. It also tested repeated state use/accumulator clearing, changed seeds, sampling amount/scale, dye clouds, microstructure, and limited mixed FIR/IIR channel execution. These are new RS software-Vulkan results, not an NVIDIA/AMD hardware qualification.
 
-`actual_gpu_iir_matches_f64_reference` is marked `#[ignore]`; the above CI runs did **not** execute its complete 1,215 cases. Limited wide-blur execution and lower variance do not establish that precision contract. The six frozen FPW images have also **not** been replayed against RS. PR #7 separately develops allocation reuse and remains under validation; it does not complete either of these image/hardware gates.
+The original PR #6 CI did not execute the complete IIR test, which is marked `#[ignore]` for ordinary runs. The resumed validation on 2026-11-13 explicitly ran all **1,215** cases locally on Mesa llvmpipe (Debian Mesa 25.0.7, LLVM 19), and [Windows/Linux CI 43424836925](https://github.com/ye602a/spektrafilm-rs/actions/runs/43424836925) subsequently passed with the full suite explicitly invoked through `--ignored`. The CI IIR log records maximum absolute error `1.1920928955078125e-7`. This establishes independent RS software-Vulkan numerical evidence, beyond the earlier limited wide-blur execution and variance checks.
 
-A resumed RS validation on 2026-11-13 explicitly ran all **1,215** IIR cases on Mesa llvmpipe (Debian Mesa 25.0.7, LLVM 19). All passed with maximum absolute error `1.1920928955078125e-7`. The standalone workflow now explicitly runs this suite with `--ignored` on Linux software Vulkan. This is independent RS numerical evidence; the dedicated RTX/AMD and six-photo host gates remain pending.
+[PR #7](https://github.com/ye602a/spektrafilm-rs/pull/7) merged that qualification and work-plane reuse as `fdef88aa95a852a4c82ba58150ed23ae2bfe7436`. The later density/output implementation additionally passed local synthetic old-revision/new-revision full-chain comparisons, including multilayer, wide IIR, clouds/microstructure and source-coordinate sampling, with all pixels byte-identical. See [FPW_PARITY_MIGRATION_PLAN.md](FPW_PARITY_MIGRATION_PLAN.md), [GPU_NEGATIVE_CACHE.md](GPU_NEGATIVE_CACHE.md) and [GPU_OUTPUT_CONTRACT.md](GPU_OUTPUT_CONTRACT.md). Final-commit CI is a gate for each follow-up change. The dedicated RTX/AMD, six-photo, real interaction/cancellation and device-recovery checks remain separate; software Vulkan does not complete them.
+
+The full resumed validation record and machine-readable results are in [GPU_MIGRATION_VALIDATION_20261113.md](GPU_MIGRATION_VALIDATION_20261113.md).
 
 ## Reproduction and qualification commands
 

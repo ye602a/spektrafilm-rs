@@ -4,6 +4,9 @@ mod layered_grain;
 #[cfg(feature = "wgpu-backend")]
 #[path = "grain_iir.rs"]
 mod grain_iir;
+#[cfg(feature = "wgpu-backend")]
+#[path = "film_output.rs"]
+mod film_output;
 #[cfg(all(test, feature = "wgpu-backend"))]
 #[path = "work_image_tests.rs"]
 mod work_image_tests;
@@ -18,6 +21,12 @@ use spektrafilm_math::image::ImageBuf;
 
 #[cfg(feature = "wgpu-backend")]
 use crate::{ComputeBackend, Lut3D, cpu_backend};
+#[cfg(feature = "wgpu-backend")]
+use crate::{
+    FilmRenderOptions, NegativeCacheStats,
+    negative_cache::{NegativeCache, NegativeKey, NegativeLookup},
+    output::{DisplayRegion, FilmOutput, OutputError, Rgb16Image, output_channel_count},
+};
 
 /// Borrow a `&[Scalar]` as `&[f32]` for GPU upload.
 /// Zero-copy in f32 mode; allocates a converted Vec in f64 mode.
@@ -164,6 +173,7 @@ pub struct WgpuBackend {
     queue: wgpu::Queue,
     grain_reference: Option<GrainReference>,
     work_images: std::sync::Mutex<WorkImageCache>,
+    negative_cache: std::sync::Mutex<NegativeCache<wgpu::Buffer>>,
     /// Cache compiled compute pipelines keyed by shader source pointer.
     /// `&'static str` is fine because all our shader sources come from `include_str!`.
     pipeline_cache: std::sync::Mutex<std::collections::HashMap<usize, CachedPipeline>>,
@@ -282,6 +292,7 @@ impl WgpuBackend {
             queue,
             grain_reference: None,
             work_images: std::sync::Mutex::new(WorkImageCache::default()),
+            negative_cache: std::sync::Mutex::new(NegativeCache::default()),
             pipeline_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -337,6 +348,27 @@ impl WgpuBackend {
             .available
             .as_ref()
             .map_or(0, |v| v.a.size().saturating_add(v.b.size()))
+    }
+
+    /// Opt in to a completed pre-print density snapshot. Input identity belongs
+    /// in each FilmRenderOptions invocation, never in shared mutable settings.
+    pub fn configure_negative_cache(&self, enabled: bool) {
+        self.negative_cache.lock().unwrap().configure(enabled);
+    }
+
+    /// Bound retained density bytes (default 384 MiB); zero disables residency.
+    /// In-flight read-only snapshots are not counted as retained cache bytes.
+    pub fn configure_negative_cache_budget_bytes(&self, bytes: u64) {
+        self.negative_cache.lock().unwrap().set_budget(bytes);
+    }
+
+    /// Evict the completed snapshot and reject every older in-flight publication.
+    pub fn clear_negative_cache(&self) {
+        self.negative_cache.lock().unwrap().clear();
+    }
+
+    pub fn negative_cache_stats(&self) -> NegativeCacheStats {
+        self.negative_cache.lock().unwrap().stats()
     }
 
     fn checkout_work_images(&self, image_bytes: u64, mappable: bool) -> (Option<WorkImages>, u64) {
@@ -958,7 +990,26 @@ impl WgpuBackend {
     /// and unsharp as a single command buffer with ping-pong image storage.
     /// Only one upload at the start and one readback at the end.
     pub fn run_film_chain(&self, p: &crate::FilmChainParams<'_>) -> ImageBuf {
+        self.run_film_chain_with_options(p, FilmRenderOptions::default())
+            .expect("GPU film chain completion")
+    }
+
+    /// Single physical-chain implementation for CPU readback, RGB16 and scoped
+    /// same-device consumers. Publication/recycling follows consumer completion.
+    fn with_film_output_impl<Encoded, R>(
+        &self,
+        p: &crate::FilmChainParams<'_>,
+        options: FilmRenderOptions<'_>,
+        region: Option<DisplayRegion>,
+        consume: impl FnOnce(&wgpu::Device, &mut wgpu::CommandEncoder, FilmOutput<'_>)
+            -> Result<Encoded, OutputError>,
+        finish: impl FnOnce(Encoded) -> Result<R, OutputError>,
+    ) -> Result<R, OutputError> {
         use wgpu::util::DeviceExt;
+        options.check_cancelled()?;
+        if let Some(region) = region {
+            region.validate(p.image.width, p.image.height)?;
+        }
         let t_start = std::time::Instant::now();
         // Pull all references into locals so the existing body below
         // doesn't need a rewrite — only the param sources change.
@@ -981,8 +1032,40 @@ impl WgpuBackend {
         let scan_normalization = p.scan_normalization;
         let scan_xyz_to_rgb = p.scan_xyz_to_rgb;
 
-        let n_pixels = image.pixel_count() as u32;
+        let channels = output_channel_count(image.width, image.height)?;
+        if image.data.len() != channels as usize {
+            return Err(OutputError::InvalidImageData);
+        }
+        let limits = self.device.limits();
+        if channels as u64 * 4 > limits.max_buffer_size
+            || channels as u64 * 4 > limits.max_storage_buffer_binding_size as u64
+            || (channels / 3).div_ceil(1024) > limits.max_compute_workgroups_per_dimension
+            || image.width.div_ceil(16) > limits.max_compute_workgroups_per_dimension
+            || image.height.div_ceil(16) > limits.max_compute_workgroups_per_dimension
+        {
+            return Err(OutputError::DeviceLimitExceeded);
+        }
+        let n_pixels = channels / 3;
         let img_bytes = n_pixels as usize * 3 * 4;
+
+        let cache_enabled = self.negative_cache.lock().unwrap().enabled();
+        let negative_key = options.source.filter(|_| cache_enabled).map(|source| {
+            NegativeKey::new(p, source, self.grain_reference.as_ref())
+        });
+        let lookup = self.negative_cache.lock().unwrap().begin(negative_key, img_bytes as u64);
+        let (negative_hit, negative_publication) = match lookup {
+            NegativeLookup::Bypass => (None, None),
+            NegativeLookup::Hit(buffer) => (Some(buffer), None),
+            NegativeLookup::Miss(publication) => (None, Some(publication)),
+        };
+        let negative_snapshot = negative_publication.as_ref().map(|_| {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("completed_negative_snapshot"),
+                size: img_bytes as u64,
+                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        });
 
         // Ping-pong image buffers (each holds H*W*3 f32 values).
         let make_img_buf = |label: &str| {
@@ -1007,11 +1090,13 @@ impl WgpuBackend {
         // (~0.5 GB/s) blit on this unified-memory GPU. With
         // MAPPABLE_PRIMARY_BUFFERS we create buf_a already mapped (MAP_WRITE)
         // and memcpy the input straight into its (shared) memory — no staging.
-        let input_f32 = scalars_to_f32(&image.data);
+        let input_f32 = negative_hit.is_none().then(|| scalars_to_f32(&image.data));
         let buf_a = if let Some(pair) = work_pair.as_ref() {
             let buf = pair.a.clone();
             // A reused buffer must be fully overwritten for each new image.
-            self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(&input_f32));
+            if let Some(input) = input_f32.as_ref() {
+                self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(input));
+            }
             buf
         } else if mappable {
             let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1023,16 +1108,19 @@ impl WgpuBackend {
                     | wgpu::BufferUsages::MAP_WRITE,
                 mapped_at_creation: true,
             });
-            buf.slice(..)
-                .get_mapped_range_mut()
-                .expect("mapped input buffer")
-                .copy_from_slice(bytemuck::cast_slice(&input_f32));
+            if let Some(input) = input_f32.as_ref() {
+                buf.slice(..)
+                    .get_mapped_range_mut()
+                    .expect("mapped input buffer")
+                    .copy_from_slice(bytemuck::cast_slice(input));
+            }
             buf.unmap();
             buf
         } else {
             let buf = make_img_buf("img_a");
-            self.queue
-                .write_buffer(&buf, 0, bytemuck::cast_slice(&input_f32));
+            if let Some(input) = input_f32.as_ref() {
+                self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(input));
+            }
             buf
         };
 
@@ -1556,24 +1644,12 @@ impl WgpuBackend {
             ],
         });
 
-        // Readback buffer (for the final image only) — only needed when we
-        // can't map buf_b directly. Skipping it on the mappable path also
-        // avoids allocating a second full-image buffer per frame.
-        let readback = (!mappable).then(|| {
-            self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("readback"),
-                size: img_bytes as u64,
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        });
-
         // ── Halation auxiliary buffers + bind groups (only if active) ────
         // Allocated up-front so they live for the encoder. The two ping-pong
         // buffers `buf_a` / `buf_b` are reused as blur input/mid; the new
         // `buf_c` and `buf_d` hold the scatter outputs and the halation
         // accumulator. None of this is touched when `p.halation` is `None`.
-        let halation_state = p.halation.as_ref().map(|hp| {
+        let halation_state = p.halation.as_ref().filter(|_| negative_hit.is_none()).map(|hp| {
             build_halation_state(
                 &self.device,
                 hp,
@@ -1587,7 +1663,7 @@ impl WgpuBackend {
 
         // ── Highlight boost state ────────────────────────────────────────
         // Runs on raw film exposure immediately after the front pass.
-        let highlight_state = p.highlight_boost.as_ref().map(|hp| {
+        let highlight_state = p.highlight_boost.as_ref().filter(|_| negative_hit.is_none()).map(|hp| {
             build_highlight_boost_state(&self.device, hp, n_pixels, &buf_b, self)
         });
 
@@ -1595,11 +1671,11 @@ impl WgpuBackend {
         // Applied on the raw film exposure (buf_b) right after hanatos and
         // before halation, matching the CPU filming order. Owns its own
         // downsampled scratch buffers.
-        let diffusion_state = p.diffusion.as_ref().map(|plan| {
+        let diffusion_state = p.diffusion.as_ref().filter(|_| negative_hit.is_none()).map(|plan| {
             build_diffusion_state(&self.device, plan, image.width, image.height, &buf_b, self)
         });
 
-        let camera_lens_blur_state = p.camera_lens_blur_px.and_then(|sigma| {
+        let camera_lens_blur_state = p.camera_lens_blur_px.filter(|_| negative_hit.is_none()).and_then(|sigma| {
             (sigma > 0.0).then(|| {
                 build_simple_blur_state(
                     &self.device,
@@ -1678,7 +1754,7 @@ impl WgpuBackend {
         // before print_spectral. Optionally followed by a Gaussian
         // post-blur (uses buf_b as mid, since log_raw_corrected in buf_b
         // is no longer needed after DIR's final density_curve_0).
-        let grain_state = p.grain.as_ref().map(|gp| {
+        let grain_state = p.grain.as_ref().filter(|_| negative_hit.is_none()).map(|gp| {
             build_grain_state(
                 &self.device,
                 gp,
@@ -1699,7 +1775,7 @@ impl WgpuBackend {
         // reused as blur mid since density_cmy is no longer needed once
         // the matmul has consumed it (the final density_curve_interp
         // overwrites buf_a anyway).
-        let dir_state = p.dir_couplers.as_ref().map(|dp| {
+        let dir_state = p.dir_couplers.as_ref().filter(|_| negative_hit.is_none()).map(|dp| {
             build_dir_state(
                 &self.device,
                 dp,
@@ -1740,48 +1816,59 @@ impl WgpuBackend {
         };
 
         // 1. Front pass (hanatos or mallett): buf_a (rgb in) → buf_b (raw)
-        dispatch(&mut encoder, &front_pipe.pipeline, &bg_front, n_pixels);
-        // 1a. Highlight boost on raw, before optical scatter.
-        if let Some(hs) = highlight_state.as_ref() {
-            hs.encode_passes(&mut encoder);
+        if let Some(snapshot) = negative_hit.as_ref() {
+            // Published snapshots are immutable and separate from every work
+            // pair. Downstream printing is free to overwrite this private copy.
+            encoder.copy_buffer_to_buffer(snapshot, 0, &buf_a, 0, img_bytes as u64);
+        } else {
+            dispatch(&mut encoder, &front_pipe.pipeline, &bg_front, n_pixels);
+            // 1a. Highlight boost on raw, before optical scatter.
+            if let Some(hs) = highlight_state.as_ref() {
+                hs.encode_passes(&mut encoder);
+            }
+            // 1a. Camera diffusion filter in-place on buf_b (raw), before
+            //     halation — mirrors the CPU filming order.
+            if let Some(ds) = diffusion_state.as_ref() {
+                ds.encode_passes(&mut encoder, &buf_b);
+            }
+            // 1b. Camera lens blur on raw, after camera diffusion and before halation.
+            if let Some(bs) = camera_lens_blur_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                bs.encode_passes(&mut encoder, wg_xy, &buf_b);
+            }
+            // 1b. Halation in-place on buf_b. Uses buf_a as blur scratch (the
+            //     input RGB image is no longer needed), buf_c / buf_d for the
+            //     scatter outputs and halation accumulator.
+            if let Some(hs) = halation_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                hs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
+            }
+            // 2. log10 in-place on buf_b: raw → log_raw (3 channels per thread).
+            let (log10_pipe, log10_bg, _keepalive) = &bg_log10;
+            dispatch(&mut encoder, &log10_pipe.pipeline, log10_bg, n_pixels);
+            // 3. Density curve (film, normalized): buf_b (log_raw) → buf_a (density_cmy)
+            dispatch(
+                &mut encoder,
+                &density_pipe.pipeline,
+                &bg_density_film,
+                n_pixels,
+            );
+            // 3b. DIR couplers (operates on buf_a, mutates buf_b → log_raw_corrected,
+            //     re-interps density curve back into buf_a).
+            if let Some(ds) = dir_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                ds.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
+            }
+            // 3c. Grain (in-place on buf_a, optional post-blur via buf_b mid).
+            if let Some(gs) = grain_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                gs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
+            }
         }
-        // 1a. Camera diffusion filter in-place on buf_b (raw), before
-        //     halation — mirrors the CPU filming order.
-        if let Some(ds) = diffusion_state.as_ref() {
-            ds.encode_passes(&mut encoder, &buf_b);
-        }
-        // 1b. Camera lens blur on raw, after camera diffusion and before halation.
-        if let Some(bs) = camera_lens_blur_state.as_ref() {
-            let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-            bs.encode_passes(&mut encoder, wg_xy, &buf_b);
-        }
-        // 1b. Halation in-place on buf_b. Uses buf_a as blur scratch (the
-        //     input RGB image is no longer needed), buf_c / buf_d for the
-        //     scatter outputs and halation accumulator.
-        if let Some(hs) = halation_state.as_ref() {
-            let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-            hs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
-        }
-        // 2. log10 in-place on buf_b: raw → log_raw (3 channels per thread).
-        let (log10_pipe, log10_bg, _keepalive) = &bg_log10;
-        dispatch(&mut encoder, &log10_pipe.pipeline, log10_bg, n_pixels);
-        // 3. Density curve (film, normalized): buf_b (log_raw) → buf_a (density_cmy)
-        dispatch(
-            &mut encoder,
-            &density_pipe.pipeline,
-            &bg_density_film,
-            n_pixels,
-        );
-        // 3b. DIR couplers (operates on buf_a, mutates buf_b → log_raw_corrected,
-        //     re-interps density curve back into buf_a).
-        if let Some(ds) = dir_state.as_ref() {
-            let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-            ds.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
-        }
-        // 3c. Grain (in-place on buf_a, optional post-blur via buf_b mid).
-        if let Some(gs) = grain_state.as_ref() {
-            let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-            gs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
+        if let Some(snapshot) = negative_snapshot.as_ref() {
+            // Capture the physical negative after DIR/grain, before any paper
+            // or scan stage can overwrite buf_a. Do not publish until success.
+            encoder.copy_buffer_to_buffer(&buf_a, 0, snapshot, 0, img_bytes as u64);
         }
         // 4 + 5. Printing: print_spectral (buf_a → buf_b) then the print
         //     density curve (buf_b → buf_a). Skipped for scan_film — the
@@ -1841,34 +1928,35 @@ impl WgpuBackend {
         // display-ready pixels without a CPU full-frame post pass.
         post_scan_state.encode_passes(&mut encoder, n_pixels);
 
-        // Zero-copy path: when buf_b is mappable, skip the blit and map it
-        // directly below. Otherwise stage it into the MAP_READ readback buffer.
-        if let Some(rb) = readback.as_ref() {
-            encoder.copy_buffer_to_buffer(&buf_b, 0, rb, 0, img_bytes as u64);
-        }
-        // Everything since function entry: CPU-side param prep, buffer
-        // creation/uploads, and command encoding.
+        // Region extraction is strictly downstream of the complete physical
+        // result. Consumers record copies/compute on this same encoder.
+        let region_output = region.map(|region| {
+            self.encode_display_region(&mut encoder, &buf_b, image.width, image.height, region)
+        }).transpose()?;
+        let (width, height) = region.map_or((image.width, image.height), |r| (r.width, r.height));
+        options.check_cancelled()?;
+        let encoded = consume(&self.device, &mut encoder, FilmOutput {
+            buffer: region_output.as_ref().unwrap_or(&buf_b),
+            width,
+            height,
+            cctf_encoding: p.output_cctf_encoding,
+        })?;
+        options.check_cancelled()?;
         let cpu_setup_ms = t_start.elapsed().as_secs_f32() * 1000.0;
-        self.queue.submit(Some(encoder.finish()));
-
-        // Single sync point at the end. Map buf_b directly on the zero-copy
-        // path, or the staging buffer otherwise.
-        let map_target = readback.as_ref().unwrap_or(&buf_b);
-        let slice = map_target.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| {
-            tx.send(r).unwrap();
-        });
-        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).expect("GPU work completion");
-        rx.recv().unwrap().unwrap();
+        let submitted = self.queue.submit(Some(encoder.finish()));
+        self.device.poll(wgpu::PollType::Wait {
+            submission_index: Some(submitted), timeout: None,
+        }).map_err(|_| OutputError::GpuFailure)?;
         let gpu_wait_ms = t_start.elapsed().as_secs_f32() * 1000.0 - cpu_setup_ms;
-        let data = slice.get_mapped_range().expect("completed buffer mapping");
-        let out_f32: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
-        drop(data);
-        map_target.unmap();
-
-        let out = ImageBuf::from_data(image.width, image.height, f32_to_scalars(out_f32));
-        // Readback is complete: only now may another render lease the pair.
+        options.check_cancelled()?;
+        let out = finish(encoded)?;
+        // This is the request's final cancellation/commit boundary. Later
+        // cancellation does not retroactively invalidate a successful result.
+        options.check_cancelled()?;
+        if let (Some(publication), Some(snapshot)) = (negative_publication, negative_snapshot) {
+            self.negative_cache.lock().unwrap().publish(publication, snapshot, img_bytes as u64);
+        }
+        // GPU consumers and any requested readback have finished before reuse.
         self.release_work_images(buf_a, buf_b, work_generation, mappable);
         tracing::debug!(
             cpu_setup_ms = format!("{cpu_setup_ms:.1}"),
@@ -1879,7 +1967,7 @@ impl WgpuBackend {
             ),
             "film chain timings"
         );
-        out
+        Ok(out)
     }
 
     /// Get-or-compile a pipeline by shader source + binding layout. Cached by
@@ -2331,6 +2419,14 @@ impl ComputeBackend for WgpuBackend {
 
     fn try_run_film_chain(&self, params: &crate::FilmChainParams<'_>) -> Option<ImageBuf> {
         Some(self.run_film_chain(params))
+    }
+
+    fn try_run_film_chain_with_options(
+        &self,
+        params: &crate::FilmChainParams<'_>,
+        options: FilmRenderOptions<'_>,
+    ) -> Result<Option<ImageBuf>, OutputError> {
+        self.run_film_chain_with_options(params, options).map(Some)
     }
 
     fn resident_chain_applies_post_scan(&self) -> bool {
