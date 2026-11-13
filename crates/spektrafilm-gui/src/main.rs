@@ -70,9 +70,10 @@ fn main() -> eframe::Result<()> {
                             ..base_limits
                         },
                         memory_hints: eframe::wgpu::MemoryHints::default(),
+                        ..Default::default()
                     }
                 }),
-                ..Default::default()
+                ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
             }
             .into(),
             ..Default::default()
@@ -1530,7 +1531,7 @@ impl eframe::App for App {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .filter_map(|f| f.path().map(|p| p.to_path_buf()))
                 .collect()
         });
         if let Some(path) = dropped.into_iter().next() {
