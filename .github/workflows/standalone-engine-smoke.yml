@@ -58,13 +58,17 @@ jobs:
       - name: Verify FPW resource identities and frozen output sources
         run: |
           python tools/validation/check_fpw_resource_contract.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/verify_calibrated_output_sources.py
 
       - name: Check accepted FPW stock and calibration contracts
         run: |
           cargo test --locked -p spektrafilm-core --test stock_setup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --locked -p spektrafilm-core --test resident_input
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --locked -p spektrafilm-core --test calibrated_output_v1 cpu_ -- --nocapture
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo check --locked -p spektrafilm-core --example fpw_host_contract
 
       - name: Reject unsupported multilayer requests without requiring CUDA hardware
@@ -73,7 +77,9 @@ jobs:
       - name: Verify engine-owned dependency keys and output geometry
         run: |
           cargo test --locked -p spektrafilm-gpu --lib negative_cache
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --locked -p spektrafilm-gpu --lib output::tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --locked -p spektrafilm-gpu --lib precise_iir_requires_vulkan_even_when_passthrough_is_available
 
   linux-vulkan-software:
