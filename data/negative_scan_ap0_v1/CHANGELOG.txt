@@ -1,0 +1,15 @@
+Frozen negative_scan_ap0_v1 data distribution
+
+2026-11-13
+- Copied FPW's accepted pro400h.json, xtra.json and heldout.json without any
+  byte changes from fursuit-photo-workflow commit
+  ae3428acd98e39c48784a79dc8f3369ab1236cb1.
+- No calibration fitting, node resampling, numerical change or new stock was
+  introduced. Original full calibration-source hashes remain provenance
+  statements; this migration verifies the exact available extracted files.
+- Preserved Andrea Volpato / spektrafilm attribution and the complete upstream
+  data license at ../../SPEKTRAFILM_DATA_LICENSE.txt (CC BY-SA 4.0).
+- See PROVENANCE.md for original paths, identities, scope and limitations.
+
+The existing route's AP0 transmission is part of its accepted calibration. This
+copy does not introduce a new engine working-space or display-transform choice.

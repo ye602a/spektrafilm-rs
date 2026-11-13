@@ -22,6 +22,12 @@ pub struct FilmRenderOptions<'a> {
     /// Already submitted GPU work is allowed to finish before resources release.
     /// A cancelled call returns no output and publishes no density snapshot.
     pub cancellation: Option<&'a AtomicBool>,
+    /// Give this invocation private work buffers and bypass the retained photo
+    /// density snapshot, including cache statistics and publication tickets.
+    /// Use for latitude/colour probes that share the photo device but must not
+    /// disturb its retained image resources. Compiled pipelines still share.
+    /// This is request-local and does not change other concurrent invocations.
+    pub isolate_photo_caches: bool,
 }
 
 impl FilmRenderOptions<'_> {

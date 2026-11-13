@@ -63,6 +63,7 @@ fn options(source: u128) -> FilmRenderOptions<'static> {
     FilmRenderOptions {
         source: Some(SourceIdentity(source)),
         cancellation: None,
+        ..Default::default()
     }
 }
 
@@ -300,6 +301,7 @@ fn tiny_rgb16_and_invalid_regions_have_explicit_results_and_cancelled_callbacks_
             let cancelled = FilmRenderOptions {
                 source: Some(SourceIdentity(2)),
                 cancellation: Some(&stop),
+                ..Default::default()
             };
             assert_eq!(
                 backend.with_film_output(params, cancelled, None, |_, _, _| {
@@ -563,6 +565,7 @@ fn consumer_error_or_pre_submission_cancellation_does_not_publish_density_and_re
             let invocation = FilmRenderOptions {
                 source: Some(SourceIdentity(5)),
                 cancellation: Some(&stop),
+                ..Default::default()
             };
             let cancelled = backend.with_film_output(params, invocation, None, |_, encoder, _| {
                 encoder.clear_buffer(&marker, 0, None);

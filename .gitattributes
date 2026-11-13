@@ -1,0 +1,8 @@
+# These pinned upstream assets/references are verified byte-for-byte on both
+# Windows and Linux. Do not rewrite their line endings during checkout.
+/SPEKTRAFILM_DATA_LICENSE.txt -text
+/data/negative_scan_ap0_v1/*.json -text
+/crates/spektrafilm-shaders/wgsl/physical_output_v1.wgsl -text
+/crates/spektrafilm-core/tests/fixtures/fpw_physical_output_v1.wgsl -text
+/crates/spektrafilm-core/tests/fixtures/fpw_negative_scan_v1.rs -text
+/crates/spektrafilm-core/tests/fixtures/fpw_finish_v1.rs -text

@@ -54,6 +54,7 @@ use crate::params::RuntimeParams;
 use crate::profile::Profile;
 use crate::spectral_service;
 use crate::stages;
+use crate::stock_setup::{AcceptedStockSetup, ResolvedStockSetup};
 
 fn apply_film_specific_params(film: &Profile, params: &mut RuntimeParams) {
     if film.is_positive() {
@@ -119,6 +120,8 @@ pub struct Pipeline {
     preflash_raw: [f64; 3],
     /// Output gamut compressor (built once; identity unless oklch is enabled).
     output_gamut: crate::gamut_compression::OutputGamutCompress,
+    /// Opt-in accepted host stock constants, separate from general defaults.
+    accepted_stock_setup: Option<ResolvedStockSetup>,
 }
 
 impl Pipeline {
@@ -139,12 +142,23 @@ impl Pipeline {
         self.preflash_raw
     }
 
+    /// Versioned stock setup selected when constructing this pipeline.
+    pub fn accepted_stock_setup(&self) -> Option<AcceptedStockSetup> {
+        self.accepted_stock_setup.map(ResolvedStockSetup::selection)
+    }
+
     /// Return a copy of this calibrated pipeline with updated runtime params.
     /// Callers must only use this when the calibration-affecting inputs match
     /// the pipeline that was originally built.
     pub fn with_params(mut self, params: RuntimeParams) -> Self {
         let mut params = params;
+        if let Some(setup) = self.accepted_stock_setup {
+            setup.before_calibration(&mut params);
+        }
         apply_film_specific_params(&self.film, &mut params);
+        if let Some(setup) = self.accepted_stock_setup {
+            setup.after_calibration(&mut params);
+        }
         self.output_gamut = crate::gamut_compression::OutputGamutCompress::build(
             &params.io.output_gamut_compress,
             &params.io.output_color_space,
@@ -184,7 +198,27 @@ impl Pipeline {
             print_illuminant,
             preflash_raw: [0.0; 3],
             output_gamut,
+            accepted_stock_setup: None,
         }
+    }
+
+    /// Build the normal spectral pipeline with a versioned, opt-in set of
+    /// accepted stock constants. The pre/post-calibration order matches the
+    /// original host adapter. This does not select RAW preparation, the scan
+    /// transport, output inversion or other application recipe parameters.
+    pub fn new_with_spectral_and_stock_setup(
+        film: Profile,
+        print: Profile,
+        mut params: RuntimeParams,
+        data_dir: &Path,
+        setup: AcceptedStockSetup,
+    ) -> Result<Self, String> {
+        let resolved = setup.resolve(&film).map_err(|error| error.to_string())?;
+        resolved.before_calibration(&mut params);
+        let mut pipeline = Self::new_with_spectral(film, print, params, data_dir)?;
+        resolved.after_calibration(&mut pipeline.params);
+        pipeline.accepted_stock_setup = Some(resolved);
+        Ok(pipeline)
     }
 
     /// Create pipeline with full Hanatos2025 spectral upsampling and calibration.
@@ -459,6 +493,7 @@ impl Pipeline {
             print_illuminant,
             preflash_raw,
             output_gamut,
+            accepted_stock_setup: None,
         })
     }
 

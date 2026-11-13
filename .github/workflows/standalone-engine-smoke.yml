@@ -51,6 +51,17 @@ jobs:
       - name: Compile full-chain cache and output regressions
         run: cargo test --locked -p spektrafilm-core -p spektrafilm-gpu --tests --no-run
 
+      - name: Verify FPW resource identities and frozen output sources
+        run: |
+          python tools/validation/check_fpw_resource_contract.py
+          python scripts/verify_calibrated_output_sources.py
+
+      - name: Check accepted FPW stock and calibration contracts
+        run: |
+          cargo test --locked -p spektrafilm-core --test stock_setup
+          cargo test --locked -p spektrafilm-core --test calibrated_output_v1 cpu_ -- --nocapture
+          cargo check --locked -p spektrafilm-core --example fpw_host_contract
+
       - name: Verify engine-owned dependency keys and output geometry
         run: |
           cargo test --locked -p spektrafilm-gpu --lib negative_cache
@@ -99,3 +110,13 @@ jobs:
         run: |
           cargo test --locked -p spektrafilm-gpu --test output_kernels -- --nocapture
           cargo test --locked -p spektrafilm-core --test negative_cache --test gpu_output -- --nocapture
+
+      - name: Verify FPW resource identities and frozen output sources
+        run: |
+          python tools/validation/check_fpw_resource_contract.py
+          python scripts/verify_calibrated_output_sources.py
+
+      - name: Exercise FPW stock, calibrated output, isolated probes and submission gate
+        run: |
+          cargo test --locked -p spektrafilm-core --test stock_setup --test calibrated_output_v1 --test probe_isolation --test submission_gate -- --nocapture
+          cargo run --locked -p spektrafilm-core --example fpw_host_contract

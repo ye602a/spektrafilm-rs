@@ -37,6 +37,7 @@ fn render(
             FilmRenderOptions {
                 source,
                 cancellation: None,
+                ..Default::default()
             },
         )
         .expect("valid film render")
@@ -219,6 +220,7 @@ fn negative_cache_preserves_full_film_pixels_with_exact_stage_invalidation() {
         FilmRenderOptions {
             source: Some(source),
             cancellation: Some(&cancelled),
+            ..Default::default()
         },
     );
     assert!(
@@ -235,6 +237,7 @@ fn negative_cache_preserves_full_film_pixels_with_exact_stage_invalidation() {
             FilmRenderOptions {
                 source: Some(source),
                 cancellation: Some(&cancelled),
+                ..Default::default()
             },
         )
         .expect("successful render after cancellation")
