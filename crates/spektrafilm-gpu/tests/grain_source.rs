@@ -157,7 +157,7 @@ fn source_anchored_grain_matches_full_frame_after_crop_and_rotation() {
     // 90° orientation: dest (x,y) samples source (3-y,x).
     let rotated = render(
         device, queue, 4, 4,
-        GrainReference::new([0., -1., 3., 1., 0., 0.], [4, 4], 4),
+        GrainReference::new([0., -1., 4., 1., 0., 0.], [4, 4], 4),
     );
     for y in 0..4 {
         for x in 0..4 {
