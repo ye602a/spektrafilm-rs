@@ -54,8 +54,10 @@ pub fn measure_autoexposure_ev(image: &ImageBuf, rgb_to_xyz: &[[f32; 3]; 3], met
     // (scipy.ndimage.zoom convention).
     let (sw, sh, ix, iy) = if max_dim > MAX_SIZE {
         let scale = (MAX_SIZE as f64) / (max_dim as f64);
-        let sw = ((w as f64) * scale).round() as usize;
-        let sh = ((h as f64) * scale).round() as usize;
+        // skimage.rescale keeps each output axis at least one pixel. Without
+        // this, a valid thin image can become an empty metering grid.
+        let sw = (((w as f64) * scale).round() as usize).max(1);
+        let sh = (((h as f64) * scale).round() as usize).max(1);
         // skimage rounds each axis independently, so the effective per-axis
         // scale is src_dim/out_dim — which differs from the global `scale` on
         // the short edge (e.g. 200/171 vs 300/256). Sample at the pixel centre
@@ -577,6 +579,35 @@ mod tests {
                 (ev as f64 - expected).abs() < 1e-5,
                 "method {method}: got {ev}, expected {expected}",
             );
+        }
+    }
+
+    #[test]
+    fn thin_image_autoexposure_keeps_preview_axes_nonempty() {
+        let rgb_to_xyz = input_colorspace_to_xyz("sRGB");
+        let reference = ImageBuf::from_data(1, 1, vec![from_f64(0.184); 3]);
+        for (width, height) in [(1, 513), (513, 1), (1, 4096), (4096, 1)] {
+            let image = ImageBuf::from_data(
+                width,
+                height,
+                vec![from_f64(0.184); width as usize * height as usize * 3],
+            );
+            for method in [
+                "median",
+                "average",
+                "center_weighted",
+                "partial",
+                "matrix",
+                "multi_zone",
+                "highlight_weighted",
+            ] {
+                let expected = measure_autoexposure_ev(&reference, &rgb_to_xyz, method);
+                let actual = measure_autoexposure_ev(&image, &rgb_to_xyz, method);
+                assert!(
+                    actual.is_finite() && (actual - expected).abs() < 1e-5,
+                    "{width}x{height} {method}: got {actual}, expected {expected}"
+                );
+            }
         }
     }
 

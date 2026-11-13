@@ -75,9 +75,9 @@ fn render_frame(
     finish: PhysicalOutputOptionsV1,
 ) -> Result<PhysicalOutputTexturesV1, Box<dyn Error>> {
     let result = pipeline
-        .with_resident_params(image, |params| {
+        .try_with_resident_params(image, |params| {
             output.render(backend, params, render, finish)
-        })
+        })?
         .ok_or("accepted physical route unavailable; do not silently select a different look")?;
     // Success here is the publication boundary. The caller can now retain the
     // textures or hand them to its display/post-processing code on this device.

@@ -285,6 +285,9 @@ try {
 
     if ($Aio) {
         cargo build --release -p spektrafilm-cli --features precision-f64 --bin spektrafilm-f64 --target-dir $BuildTargetDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "f64 CLI build failed (cargo exit code $LASTEXITCODE)."
+        }
 
         $releaseDir = Join-Path $BuildTargetDir "release"
         $manifestPath = Join-Path $repo "target\packaging\embedded_bundle.rs"
@@ -294,6 +297,9 @@ try {
         try {
             $env:SPEKTRAFILM_EMBED_MANIFEST = (Resolve-Path -LiteralPath $manifestPath).Path
             cargo build --release -p spektrafilm-gui --features spektrafilm-gpu/cuda-backend --target-dir $BuildTargetDir
+            if ($LASTEXITCODE -ne 0) {
+                throw "GUI build failed (cargo exit code $LASTEXITCODE)."
+            }
         } finally {
             if ($null -eq $oldEmbed) {
                 Remove-Item Env:\SPEKTRAFILM_EMBED_MANIFEST -ErrorAction SilentlyContinue
@@ -335,7 +341,13 @@ Backends:
         Write-Host "Icon:         $(Resolve-Path -LiteralPath $iconPath)"
     } else {
         cargo build --release -p spektrafilm-gui --features spektrafilm-gpu/cuda-backend --target-dir $BuildTargetDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "GUI build failed (cargo exit code $LASTEXITCODE)."
+        }
         cargo build --release -p spektrafilm-cli --features precision-f64 --bin spektrafilm-f64 --target-dir $BuildTargetDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "f64 CLI build failed (cargo exit code $LASTEXITCODE)."
+        }
 
         $releaseDir = Join-Path $BuildTargetDir "release"
         $guiExe = Join-Path $releaseDir "spektrafilm-gui.exe"

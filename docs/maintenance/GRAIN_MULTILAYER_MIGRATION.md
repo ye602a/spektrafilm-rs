@@ -34,6 +34,14 @@ when using wide IIR. Unsupported backends must not silently substitute a
 visually different approximation. Narrow FIR and the simple sampler retain
 their existing behavior.
 
+Checked wgpu output calls return `OutputError::UnsupportedGrainIir` when the
+selected effective blur radii need IIR but the device is not Vulkan or lacks
+`PASSTHROUGH_SHADERS`. Rejection precedes cache changes and consumer encoding;
+passthrough support on another backend does not make this SPIR-V kernel usable.
+CUDA does not implement the explicit multilayer model: its checked call returns
+`UnsupportedMultilayerGrain`, and its legacy call fails explicitly instead of
+silently selecting simple grain. CPU reference sampling remains a separate path.
+
 ## Verification
 
 Software Vulkan tests exercise repeated state use, accumulator clearing, changed
@@ -52,6 +60,7 @@ maximum absolute error `1.1920928955078125e-7`. The tolerance is
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-gpu --test grain_source
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-gpu --lib actual_gpu_grain_follows_source_coordinates
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-gpu --lib actual_gpu_multilayer_moments_and_controls
+SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-gpu --lib actual_gpu_multilayer_requires_iir_capability_before_cache_or_consumer
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-gpu --lib actual_gpu_iir_matches_f64_reference -- --ignored --nocapture
 ```
 

@@ -19,6 +19,10 @@ route must explicitly enable it.
 
 ## Adoption checklist
 
+The engine contracts and standalone checks are available. Switching a host to
+the independent engine and qualifying its accepted images remain separate
+delivery gates; engine test success alone does not complete host adoption.
+
 1. Bind the source revision, verified resource identity, stock-setup version and
    output route together. Use the public APIs for film processing and cache
    dependencies; retain application state and scheduling in the host.

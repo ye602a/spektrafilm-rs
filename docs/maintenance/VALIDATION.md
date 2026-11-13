@@ -1,5 +1,36 @@
 # Engine validation
 
+## Boundary review (2026-11-13)
+
+The follow-up review adds checks for malformed resident input, nonempty metering
+grids for thin images, missing Vulkan IIR capability, unsupported CUDA multilayer
+selection, cancellation raised after GPU completion, and failed Windows builds
+leaving old executables available. These are input, capability and publication
+boundaries; the accepted shader kernels, profiles and calibration tables are
+unchanged.
+
+Local verification used Rust 1.100.0, wgpu 30.0.1, system OpenBLAS and Mesa 25.0.7
+llvmpipe Vulkan (LLVM 19.1.7), with `SPEKTRAFILM_REQUIRE_GPU=1`:
+
+- All 121 math/model/core/GPU library and integration tests passed. The one
+  ignored IIR test was run explicitly: all 1,215 cases passed with maximum
+  absolute error `1.1920928955078125e-7` and the original tolerance.
+- The CUDA selection check passed without initializing CUDA, and both resident
+  input tests passed again with `precision-f64`.
+- The public host example completed all five routes, including full and regional
+  output on the injected device. The 55-resource, 3-calibration and 7-source-hash
+  checks passed with unchanged content identities.
+- Separately compiled pre-review main `fc0e4a985de62cae388c5ceb8069aa383de401bc`
+  and the candidate produced identical inputs and resolved parameters for all
+  eight migration-probe cases. All 5,952 f32 values matched byte-for-byte.
+
+CI also runs the Windows packaging regression in
+[`package_windows_failures.ps1`](../../scripts/tests/package_windows_failures.ps1).
+It deliberately fails each of the four build positions across directory and AIO
+packaging and checks that processing stops, old executables and the previous
+package stay intact, and the embedding environment is restored. This is failure
+handling coverage, not installation or launch qualification of a native package.
+
 ## Recorded baseline
 
 [PR #9](https://github.com/ye602a/spektrafilm-rs/pull/9) merged as
@@ -55,13 +86,16 @@ python tools/validation/check_fpw_resource_contract.py
 python scripts/verify_calibrated_output_sources.py
 
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked \
-  -p spektrafilm-core -p spektrafilm-gpu --features openblas-src/system \
-  --test work_images --test negative_cache --test gpu_output --test output_kernels \
-  --test stock_setup --test calibrated_output_v1 --test probe_isolation --test submission_gate
+  -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core -p spektrafilm-gpu \
+  --features openblas-src/system --lib --tests
 
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked \
   -p spektrafilm-gpu --features openblas-src/system --lib \
   actual_gpu_iir_matches_f64_reference -- --ignored --nocapture
+
+cargo test --locked -p spektrafilm-gpu \
+  --features openblas-src/system,cuda-backend --lib \
+  multilayer_grain_selection_is_rejected_without_initializing_cuda
 
 cargo build --locked \
   -p spektrafilm-core -p spektrafilm-gpu --features openblas-src/system \
@@ -85,7 +119,10 @@ The comparator rejects changed inputs or parameters before reporting parity.
 Small synthetic images and software Vulkan establish the tested numerical and
 ownership behavior. They do not establish production-image acceptance,
 dedicated-hardware results, real window interaction or device recovery.
-Callback-triggered cancellation tests cover the pre-submission boundary;
-already-submitted writes cannot be undone. Destinations may be published only
-after the whole render succeeds. Host adoption follows the
-[compatibility checks](FPW_PARITY_MIGRATION_PLAN.md).
+Cancellation regressions cover rejection before submission and cancellation
+raised by the submitted command's completion callback. The latter confirms that
+destination writes can already have executed while the request still returns an
+error and publishes no density; a subsequent successful render recovers. It does
+not establish interruption of GPU execution or device-loss recovery.
+Destinations may be published only after the whole render succeeds. Host adoption
+follows the [compatibility checks](FPW_PARITY_MIGRATION_PLAN.md).

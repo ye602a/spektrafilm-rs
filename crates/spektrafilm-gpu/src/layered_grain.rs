@@ -4,6 +4,43 @@ use super::grain_iir::{self, GrainJob};
 use super::*;
 use wgpu::util::DeviceExt;
 
+/// The effective blur radii used both for capability checks and dispatch.
+/// Sampling scales radii only after the original cloud/micro activation gates.
+struct GrainBlurPlan {
+    dye: Option<[[f32; 3]; 3]>,
+    micro: Option<[f32; 3]>,
+    grain: [f32; 3],
+}
+
+impl GrainBlurPlan {
+    fn new(gp: &crate::GrainGpuParams) -> Option<Self> {
+        let g = gp.layers.as_ref()?;
+        let scale = g.output_sampling.map_or(1.0, |v| v[0]);
+        Some(Self {
+            dye: g.dye_sigma.iter().flatten().any(|s| *s > 0.4).then(|| {
+                g.dye_sigma.map(|row| row.map(|s| if s > 0.4 { s * scale } else { 0.0 }))
+            }),
+            micro: (g.micro_sigma > 0.05 && g.micro_blur > 0.4)
+                .then_some([g.micro_blur * scale; 3]),
+            grain: [gp.grain_blur * scale; 3],
+        })
+    }
+
+    fn requires_iir(&self) -> bool {
+        self.dye.as_ref().is_some_and(|rows| rows.iter().any(uses_iir))
+            || self.micro.as_ref().is_some_and(uses_iir)
+            || uses_iir(&self.grain)
+    }
+}
+
+fn uses_iir(sigmas: &[f32; 3]) -> bool {
+    sigmas.iter().any(|s| *s >= 3.0)
+}
+
+pub(super) fn requires_iir(gp: &crate::GrainGpuParams) -> bool {
+    GrainBlurPlan::new(gp).is_some_and(|plan| plan.requires_iir())
+}
+
 pub(super) struct LayeredGrainState {
     jobs: Vec<GrainJob>,
     accumulator: Option<wgpu::Buffer>,
@@ -21,6 +58,7 @@ impl LayeredGrainState {
         backend: &WgpuBackend,
     ) -> Self {
         let g = gp.layers.as_ref().expect("layered grain parameters");
+        let blur_plan = GrainBlurPlan::new(gp).expect("layered grain parameters");
         let shader = backend.cached_pipeline(
             concat!(include_str!("../../spektrafilm-shaders/wgsl/grain_reference.wgsl"), include_str!("../../spektrafilm-shaders/wgsl/grain_layers.wgsl")),
             &[
@@ -145,7 +183,7 @@ impl LayeredGrainState {
                     add(jobs, 3, 0, [0.0; 4], &data, src, mid);
                     add(jobs, 2, 0, [0.0; 4], &data, mid, src);
                 }
-                if sigmas.iter().any(|s| *s >= 3.0) {
+                if uses_iir(&sigmas) {
                     grain_iir::append_pass(jobs, backend, width, height, sigmas, 1, src, mid);
                     grain_iir::append_pass(jobs, backend, width, height, sigmas, 0, mid, src);
                 }
@@ -156,22 +194,21 @@ impl LayeredGrainState {
             add(&mut jobs, 7, 0, [0.;4], &[0.], a, &buffer);
             buffer
         });
-        let scale = g.output_sampling.map_or(1., |v| v[0]);
-        let cloud = g.dye_sigma.iter().flatten().any(|s| *s > 0.4);
+        let cloud = blur_plan.dye.is_some();
         let micro = g.micro_sigma > 0.05;
-        let tmp = if cloud || (micro && g.micro_blur > 0.4) {
+        let tmp = if cloud || blur_plan.micro.is_some() {
             Some(alloc())
         } else {
             None
         };
         let values = [0.0, 0.0, 0.0, gp.monochrome as u32 as f32];
-        if cloud {
+        if let Some(dye_sigmas) = blur_plan.dye {
             let acc = alloc();
             for sl in 0..3 {
                 add(&mut jobs, 1, sl as u32, values, &g.packed, a, b);
                 blur(
                     &mut jobs,
-                    g.dye_sigma[sl].map(|s| if s > 0.4 { s * scale } else { 0.0 }),
+                    dye_sigmas[sl],
                     b,
                     tmp.as_ref().unwrap(),
                 );
@@ -193,8 +230,8 @@ impl LayeredGrainState {
                 a,
                 b,
             );
-            if g.micro_blur > 0.4 {
-                blur(&mut jobs, [g.micro_blur * scale; 3], b, tmp.as_ref().unwrap());
+            if let Some(sigmas) = blur_plan.micro {
+                blur(&mut jobs, sigmas, b, tmp.as_ref().unwrap());
             }
         }
         add(
@@ -211,7 +248,7 @@ impl LayeredGrainState {
             a,
             b,
         );
-        blur(&mut jobs, [gp.grain_blur * scale; 3], a, b);
+        blur(&mut jobs, blur_plan.grain, a, b);
         if let Some(original) = &baseline { add(&mut jobs, 8, 0, [0.;4], &[0.], original, a); }
         Self { jobs, accumulator, _baseline: baseline }
     }
@@ -345,6 +382,153 @@ mod tests {
             monochrome: false,
         }
     }
+
+    #[test]
+    fn actual_gpu_multilayer_requires_iir_capability_before_cache_or_consumer() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = match pollster::block_on(instance.request_adapter(
+            &wgpu::RequestAdapterOptions::default(),
+        )) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                assert!(std::env::var_os("SPEKTRAFILM_REQUIRE_GPU").is_none(), "{error}");
+                eprintln!("SKIP: no Vulkan adapter for grain capability test: {error}");
+                return;
+            }
+        };
+        // A narrow-grain device deliberately has no passthrough shader feature.
+        // The same valid device must stay usable after a wide-grain rejection.
+        let mut descriptor = WgpuBackend::device_descriptor(&adapter);
+        descriptor.required_features = wgpu::Features::empty();
+        let (device, queue) = pollster::block_on(adapter.request_device(&descriptor))
+            .expect("narrow-grain test device");
+        let backend = WgpuBackend::from_device(device, queue);
+        backend.configure_work_images(true);
+        backend.configure_negative_cache(true);
+        let input = ImageBuf::from_data(2, 2, f32_to_scalars(vec![0.18; 12]));
+        let options = crate::FilmRenderOptions {
+            source: Some(crate::SourceIdentity(11)),
+            ..Default::default()
+        };
+        // Small, valid spectral inputs keep this a public full-chain check,
+        // without relying on a particular film profile or malformed dummy data.
+        let chain = |grain| crate::FilmChainParams {
+            image: &input,
+            front: crate::FrontPass::Mallett2019 {
+                matrix: [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+            },
+            film_log_exposure: &[-3., 1.],
+            film_density_curves_normalized: &[[0.; 3], [3.; 3]],
+            film_gamma: 1.,
+            film_channel_density: &[[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+            film_base_density: &[0.; 3],
+            print_illuminant: &[1.; 3],
+            print_sensitivity: &[[1.; 3]; 3],
+            print_normalization_factor: 1.,
+            print_log_exposure: &[-3., 1.],
+            print_density_curves: &[[0.; 3], [3.; 3]],
+            print_gamma: 1.,
+            print_channel_density: &[[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+            print_base_density: &[0.; 3],
+            preflash: [0.; 3],
+            viewing_illuminant: &[1.; 3],
+            scan_normalization: 1.,
+            scan_xyz_to_rgb: &[[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
+            bw_xyz_remap: None,
+            scan_film: true,
+            halation: None,
+            dir_couplers: None,
+            grain: Some(grain),
+            glare: None,
+            gamut: None,
+            unsharp: None,
+            camera_lens_blur_px: None,
+            scanner_lens_blur_px: None,
+            highlight_boost: None,
+            diffusion: None,
+            enlarger_diffusion: None,
+            print_exposure_scale: 1.,
+            output_cctf_encoding: false,
+        };
+        let baseline = backend.run_film_chain_with_options(&chain(parameters()), options)
+            .expect("unblurred multilayer grain needs no IIR capability");
+        assert!(baseline.data.iter().all(|v| v.is_finite()));
+        let before_cache = backend.negative_cache_stats();
+        let before_work = backend.work_image_bytes();
+        assert!(before_cache.resident_bytes > 0 && before_work > 0);
+
+        // Each possible source of an IIR pass, including output-space scaling,
+        // must reject before taking a retained pair or replacing a density key.
+        for case in 0..5 {
+            let mut gp = parameters();
+            match case {
+                0 => gp.grain_blur = 3.,
+                1 => {
+                    gp.grain_blur = 1.5;
+                    gp.layers.as_mut().unwrap().output_sampling = Some([2., 1.]);
+                }
+                2 => gp.layers.as_mut().unwrap().dye_sigma[1][2] = 3.,
+                3 => {
+                    let g = gp.layers.as_mut().unwrap();
+                    g.dye_sigma[0][0] = 1.5;
+                    g.output_sampling = Some([2., 1.]);
+                }
+                4 => {
+                    let g = gp.layers.as_mut().unwrap();
+                    g.micro_sigma = 0.3;
+                    g.micro_blur = 1.5;
+                    g.output_sampling = Some([2., 1.]);
+                }
+                _ => unreachable!(),
+            }
+            let called = std::cell::Cell::new(false);
+            let result = backend.with_film_output(&chain(gp), options, None, |_, _, _| {
+                called.set(true);
+                Ok(())
+            });
+            assert_eq!(result, Err(OutputError::UnsupportedGrainIir), "case {case}");
+            assert!(!called.get(), "unsupported grain must not invoke the consumer");
+            assert_eq!(backend.negative_cache_stats(), before_cache);
+            assert_eq!(backend.work_image_bytes(), before_work);
+        }
+
+        // Original activation thresholds and scaled narrow radii still work.
+        // The legacy sampler uses its own FIR implementation even for sigma 3+.
+        for case in 0..4 {
+            let mut gp = parameters();
+            match case {
+                0 => gp.grain_blur = 2.999,
+                1 => {
+                    let g = gp.layers.as_mut().unwrap();
+                    g.dye_sigma = [[0.4; 3]; 3];
+                    g.micro_sigma = 0.05;
+                    g.micro_blur = 100.;
+                    g.output_sampling = Some([20., 1.]);
+                }
+                2 => {
+                    gp.grain_blur = 4.;
+                    let g = gp.layers.as_mut().unwrap();
+                    g.dye_sigma[0][1] = 4.;
+                    g.micro_sigma = 0.3;
+                    g.micro_blur = 4.;
+                    g.output_sampling = Some([0.5, 1.]);
+                }
+                3 => {
+                    gp.layers = None;
+                    gp.grain_blur = 12.;
+                }
+                _ => unreachable!(),
+            }
+            let out = backend.run_film_chain_with_options(&chain(gp), options)
+                .expect("narrow and legacy grain remain available");
+            assert_eq!((out.width, out.height), (2, 2));
+            assert!(out.data.iter().all(|v| v.is_finite()), "case {case}");
+        }
+    }
+
     #[test]
     fn actual_gpu_grain_follows_source_coordinates() {
         let mut backend=WgpuBackend::new().expect("real GPU required");

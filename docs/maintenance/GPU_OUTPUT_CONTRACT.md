@@ -83,8 +83,11 @@ that already reached a host-owned destination; the caller must therefore wait
 for `Ok` before publishing it. The encoding callback itself is not a publication
 notification. `run_film_chain_region`, `run_film_chain_rgb16`, and
 `with_film_output` share this implementation; the legacy full-f32 method stays
-available. `Pipeline::with_resident_params` supplies the same prepared physical
-parameters without duplicating pipeline construction in the host.
+available. `Pipeline::try_with_resident_params` supplies the same prepared
+physical parameters without duplicating pipeline construction in the host.
+It rejects empty, overflowing or malformed RGB input before CPU metering or
+the consumer callback. The legacy `with_resident_params` keeps its `Option`
+interface and returns `None` for invalid input or an unavailable resident route.
 
 ## Validation
 
@@ -113,11 +116,16 @@ odd-channel outputs, invalid requests, and a same-device consumer that writes
 an independently owned RGBA32F texture. That texture retains its pixels after
 the next source image reuses the engine's work buffers.
 
-The consumer-error and callback-triggered cancellation test verifies the
+The consumer-error and encoding-callback cancellation test verifies the
 **pre-submission** boundary: its recorded write never reaches the host marker
 buffer, no density is published, and a later successful render recovers and
-caches normally. It is not evidence of interruption during an in-flight GPU
-submission. Submitted completion/cancellation needs its own backend test.
+caches normally.
+
+A separate completion-callback regression requests cancellation after the
+submitted writes finish. The host marker changes, but the request returns
+`Cancelled`, publishes no density and retains no work planes. A successful retry
+matches the ordinary output and can cache normally. This covers the completion
+boundary, not interruption of GPU execution or recovery from device loss.
 
 These small deterministic cases do not replace target-device and host-image
 acceptance. See [VALIDATION.md](VALIDATION.md) for the recorded test scope.
