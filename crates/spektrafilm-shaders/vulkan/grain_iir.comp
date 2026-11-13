@@ -1,0 +1,98 @@
+#version 450
+// Double-float recurrence adapted from pinned SpektraLab 99c2d5c8.
+// NoContraction on error-free transforms is essential; WGSL 24 does not
+// express this contract. The checked SPIR-V is loaded by wgpu on Vulkan.
+layout(local_size_x = 256) in;
+const bool SPK_FUSED_FMA = false; // Dekker path; no device FMA assumption.
+layout(set=0,binding=0,std140) uniform Params { uvec4 shape; uvec4 enabled; } p;
+layout(set=0,binding=1,std430) readonly buffer Input { float value[]; } source;
+layout(set=0,binding=2,std430) buffer Output { float value[]; } dest;
+layout(set=0,binding=3,std430) readonly buffer Coeff { vec2 value[]; } coeff;
+vec2 two_sum(float a, float b) {
+    precise float s = a + b;
+    precise float bb = s - a;
+    precise float e = (a - (s - bb)) + (b - bb);
+    return vec2(s, e);
+}
+
+vec2 quick_two_sum(float a, float b) {
+    precise float s = a + b;
+    precise float e = b - (s - a);
+    return vec2(s, e);
+}
+
+vec2 two_prod(float a, float b) {
+    precise float p = a * b;
+    if (SPK_FUSED_FMA) {
+        precise float e = fma(a, b, -p);
+        return vec2(p, e);
+    }
+    // A device that does not fuse fma (lavapipe) would return e == 0 above
+    // and lose the low word. Veltkamp/Dekker splitting gives the same exact
+    // error term with plain products, so both paths produce identical pairs.
+    precise float ca = 4097.0 * a;
+    precise float ahi = ca - (ca - a);
+    precise float alo = a - ahi;
+    precise float cb = 4097.0 * b;
+    precise float bhi = cb - (cb - b);
+    precise float blo = b - bhi;
+    precise float e = ((ahi * bhi - p) + ahi * blo + alo * bhi) + alo * blo;
+    return vec2(p, e);
+}
+
+vec2 df_add(vec2 a, vec2 b) {
+    vec2 s = two_sum(a.x, b.x);
+    vec2 t = two_sum(a.y, b.y);
+    precise float lo = s.y + t.x;
+    s = quick_two_sum(s.x, lo);
+    precise float final_lo = s.y + t.y;
+    return quick_two_sum(s.x, final_lo);
+}
+
+vec2 df_mul(vec2 a, vec2 b) {
+    vec2 p = two_prod(a.x, b.x);
+    precise float cross_terms = a.x * b.y + a.y * b.x;
+    precise float lo = p.y + cross_terms;
+    return quick_two_sum(p.x, lo);
+}
+
+vec2 df_mul_f(vec2 a, float b) {
+    vec2 p = two_prod(a.x, b);
+    precise float lo = p.y + a.y * b;
+    return quick_two_sum(p.x, lo);
+}
+
+vec2 step_value(float x, vec2 a, vec2 b, vec2 c, uint channel) {
+    vec2 v = df_mul_f(coeff.value[4u*channel], x);
+    v = df_add(v, df_mul(coeff.value[4u*channel+1u], a));
+    v = df_add(v, df_mul(coeff.value[4u*channel+2u], b));
+    return df_add(v, df_mul(coeff.value[4u*channel+3u], c));
+}
+void main() {
+    uint t=gl_GlobalInvocationID.y*gl_NumWorkGroups.x*256u+gl_GlobalInvocationID.x;
+    uint width=p.shape.x, height=p.shape.y;
+    bool vertical=p.shape.z==0u;
+    uint lines=vertical ? width : height;
+    if(t>=lines*3u) return;
+    uint channel=t%3u, line=t/3u;
+    uint length=vertical ? height : width;
+    uint stride=vertical ? width*3u : 3u;
+    uint base=vertical ? line*3u+channel : line*width*3u+channel;
+    if(p.enabled[channel]==0u) {
+        for(uint i=0u;i<length;i++) dest.value[base+i*stride]=source.value[base+i*stride];
+        return;
+    }
+    vec2 a=vec2(source.value[base],0.0),b=a,c=a;
+    for(uint i=0u;i<length;i++) {
+        vec2 v=step_value(source.value[base+i*stride],a,b,c,channel);
+        dest.value[base+i*stride]=v.x;
+        c=b;b=a;a=v;
+    }
+    a=vec2(dest.value[base+(length-1u)*stride],0.0);b=a;c=a;
+    for(int i=int(length)-1;i>=0;i--) {
+        uint index=base+uint(i)*stride;
+        vec2 v=step_value(dest.value[index],a,b,c,channel);
+        dest.value[index]=v.x;
+        c=b;b=a;a=v;
+    }
+}

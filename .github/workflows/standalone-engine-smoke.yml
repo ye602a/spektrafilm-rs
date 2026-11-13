@@ -39,6 +39,9 @@ jobs:
           '@ | python -
 
 
+      - name: Compile migrated GPU test suites
+        run: cargo test --locked -p spektrafilm-gpu --lib --no-run
+
       - name: Check and exercise host device boundary
         run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
 
@@ -70,3 +73,8 @@ jobs:
 
       - name: Verify actual source-anchored physical grain on Vulkan
         run: cargo test --locked -p spektrafilm-gpu --test grain_source -- --nocapture
+
+      - name: Exercise source-mapped and multilayer GPU grain on Vulkan
+        run: |
+          cargo test --locked -p spektrafilm-gpu --lib actual_gpu_grain_follows_source_coordinates -- --nocapture
+          cargo test --locked -p spektrafilm-gpu --lib actual_gpu_multilayer_moments_and_controls -- --nocapture

@@ -12,6 +12,9 @@ use spektrafilm_gpu::ComputeBackend;
 use spektrafilm_math::image::ImageBuf;
 use spektrafilm_math::spectral::TcLut;
 
+#[path = "grain_layers.rs"]
+mod grain_layers;
+
 /// Diagnostic helper: when env var `$var` is set, dump the image's f64
 /// pixel data to that path as a raw little-endian f64 blob. Used to
 /// bisect the Python ↔ Rust drift one stage at a time without
@@ -999,7 +1002,13 @@ impl Pipeline {
             for c in 0..3 {
                 density_max[c] = dmax_curves[c] + g.density_min[c] as f32;
             }
+            let layers = if g.gpu_multilayer && g.sublayers_active && !g.monochrome {
+                Some(grain_layers::prepare(&self.film, g, pix_um))
+            } else {
+                None
+            };
             Some(spektrafilm_gpu::GrainGpuParams {
+                layers,
                 density_min: [
                     g.density_min[0] as f32,
                     g.density_min[1] as f32,
