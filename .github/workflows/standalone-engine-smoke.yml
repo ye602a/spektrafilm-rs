@@ -24,6 +24,21 @@ jobs:
       - name: Check standalone crates and applications
         run: cargo check --locked -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core -p spektrafilm-gpu -p spektrafilm-cli -p spektrafilm-gui
 
+      - name: Assert standalone GUI and film engine share wgpu 30
+        shell: pwsh
+        run: |
+          @'
+          import tomllib
+          from pathlib import Path
+          packages = tomllib.loads(Path("Cargo.lock").read_text())["package"]
+          versions = lambda name: sorted(p["version"] for p in packages if p["name"] == name)
+          assert versions("wgpu") == ["30.0.1"], f"wgpu versions: {versions('wgpu')}"
+          assert versions("eframe") == ["0.37.0"], f"eframe versions: {versions('eframe')}"
+          assert versions("egui") == ["0.37.0"], f"egui versions: {versions('egui')}"
+          assert versions("egui-wgpu") == ["0.37.0"], f"egui-wgpu versions: {versions('egui-wgpu')}"
+          '@ | python -
+
+
       - name: Check and exercise host device boundary
         run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
 

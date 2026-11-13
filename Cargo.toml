@@ -30,8 +30,8 @@ image = { version = "0.25", default-features = false, features = ["tiff", "png",
 exr = "1.73"
 wgpu = { version = "=30.0.1", default-features = false, features = ["std", "wgsl", "vulkan"] }
 clap = { version = "4", features = ["derive"] }
-eframe = { version = "0.31", default-features = false, features = ["wgpu", "glow", "default_fonts", "wayland", "x11"] }
-egui = "0.31"
+eframe = { version = "=0.37.0", default-features = false, features = ["wgpu", "glow", "default_fonts", "wayland", "x11"] }
+egui = "=0.37.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 thiserror = "2"

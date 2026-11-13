@@ -70,9 +70,10 @@ fn main() -> eframe::Result<()> {
                             ..base_limits
                         },
                         memory_hints: eframe::wgpu::MemoryHints::default(),
+                        ..Default::default()
                     }
                 }),
-                ..Default::default()
+                ..eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle()
             }
             .into(),
             ..Default::default()
@@ -1463,7 +1464,8 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
         // First-paint hook: tag the wgpu Metal layer's colorspace as sRGB.
         // Has to happen here (not in `App::new`) because the CAMetalLayer
         // isn't wired up at construction time.
@@ -1491,7 +1493,7 @@ impl eframe::App for App {
             } else {
                 let elapsed = now.saturating_duration_since(dirty_since);
                 if elapsed >= PREVIEW_DEBOUNCE {
-                    self.dispatch_render(ctx);
+                    self.dispatch_render(&ctx);
                     self.dirty = false;
                     self.dirty_since = None;
                 } else {
@@ -1502,15 +1504,15 @@ impl eframe::App for App {
         if self.render_job.is_some() {
             ctx.request_repaint_after(IN_FLIGHT_REPAINT);
         }
-        self.poll_render_job(ctx);
-        self.poll_export_job(ctx);
-        egui::SidePanel::right("controls")
+        self.poll_render_job(&ctx);
+        self.poll_export_job(&ctx);
+        egui::Panel::right("controls")
             .resizable(false)
-            .exact_width(340.0)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.controls_panel(ui, ctx));
+            .exact_size(340.0)
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| self.controls_panel(ui, &ctx));
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             // Clone the texture handle (cheap — internally `Arc`) so we
             // can take `&mut self` to mutate `zoom` / `pan` from the
             // closure without a borrow conflict on `self.output_tex`.
@@ -1529,7 +1531,10 @@ impl eframe::App for App {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path.clone())
+                .filter_map(|f| {
+                    let path = f.path();
+                    (!path.as_os_str().is_empty()).then(|| path.to_path_buf())
+                })
                 .collect()
         });
         if let Some(path) = dropped.into_iter().next() {
