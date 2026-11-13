@@ -21,6 +21,7 @@ cp "$BUILD_TARGET_DIR/release/spektrafilm-gui" "$APP_BUNDLE/Contents/MacOS/spekt
 cp "$BUILD_TARGET_DIR/release/spektrafilm" "$APP_BUNDLE/Contents/MacOS/spektrafilm"
 cp "$BUILD_TARGET_DIR/release/spektrafilm-f64" "$APP_BUNDLE/Contents/MacOS/spektrafilm-f64"
 cp -R data "$APP_BUNDLE/Contents/Resources/data"
+cp LICENSE SPEKTRAFILM_DATA_LICENSE.txt "$APP_BUNDLE/Contents/Resources/"
 chmod +x "$APP_BUNDLE/Contents/MacOS/spektrafilm-gui" \
     "$APP_BUNDLE/Contents/MacOS/spektrafilm" \
     "$APP_BUNDLE/Contents/MacOS/spektrafilm-f64"
@@ -82,7 +83,10 @@ spektrafilm-rs macOS
 Run Spektrafilm.app for the GUI.
 
 Backends:
-- macOS uses the WGSL/wgpu backend through Metal by default.
+- The GUI can use Metal through its wgpu dependencies. This macOS package is
+  experimental; the current engine qualification covers Vulkan on Linux.
+- The standalone CLI is built separately and may fall back to CPU when no
+  compiled GPU backend is available. Set SPEKTRAFILM_BACKEND=cpu to select CPU.
 - CUDA is not available on modern macOS builds.
 
 f64 export:

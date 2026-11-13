@@ -1,9 +1,8 @@
 # Shared-device submission gate
 
-FPW shares one wgpu device and queue between physical film rendering and its
-window renderer. Its existing surface coordination mutex protects short queue
-submission and surface-reconfiguration sections. RS accepts that same mutex
-without requiring FPW to hold it around a complete render or GPU wait.
+A host sharing its wgpu device between film processing and display can pass
+one mutex for short submission and surface-reconfiguration sections. The host
+does not need to hold that mutex around a complete engine render or GPU wait.
 
 ## Constructor and ownership
 
@@ -63,20 +62,11 @@ previously registered `Queue::on_submitted_work_done` callbacks from inside
 work rather than synchronously acquire this same non-reentrant mutex. The
 engine does not add a second callback scheduler or broaden the locked section.
 
-## FPW reference
+## Compatibility
 
-The fixed reference is FPW commit
-`ae3428acd98e39c48784a79dc8f3369ab1236cb1`:
-
-- [`fpw-runtime/src/film.rs`, `Engine::new`, lines 83–91](https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/film.rs#L83-L91)
-  passes the existing preview device, queue, and surface submission lock into
-  the vendored physical backend.
-- [`vendor/spektrafilm/.../wgpu_backend.rs`, lines 220–228](https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/vendor/spektrafilm/crates/spektrafilm-gpu/src/wgpu_backend.rs#L220-L228)
-  stores that optional mutex and locks only around `queue.submit`.
-
-The separately named RS constructor preserves existing standalone callers while
-making this concrete FPW contract available. No FPW file or dependency pin is
-changed by this addition, and no physical shader or color operation changes.
+The optional gate preserves the submission boundary of the reference engine at
+`ae3428acd98e39c48784a79dc8f3369ab1236cb1`. The separately named constructor
+retains the existing two-argument API and standalone behavior.
 
 ## Regression
 
@@ -102,5 +92,5 @@ SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked \
 ```
 
 The local Mesa Vulkan run exercises actual command execution and the cancellation
-boundary. FPW window resize/reconfiguration remains a host integration gate;
-this headless regression does not simulate a window-system surface.
+boundary. Window resize/reconfiguration remains a host integration check; this
+headless regression does not simulate a window-system surface.

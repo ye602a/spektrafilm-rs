@@ -1,15 +1,13 @@
 # Frozen calibrated negative output v1
 
-`spektrafilm_core::calibrated_output_v1` owns FPW's accepted calibrated negative
-inversion, finish exposure, quantization and display sampling. The host supplies
-its existing device and recipe choices, then retains engine-produced textures.
-It does not need another film inversion or final output shader.
+`spektrafilm_core::calibrated_output_v1` provides calibrated negative inversion,
+finish exposure, quantization and display sampling on a host-supplied device.
+The host retains the resulting textures.
 
-This is the existing `negative_scan_ap0_v1` route, frozen from FPW
-[`ae3428acd98e39c48784a79dc8f3369ab1236cb1`](https://github.com/ye602a/fursuit-photo-workflow/tree/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src).
-AP0 is the established transmission transport for these two calibrations. It is
-not a new engine working-space selection or an implementation of the separate
-wide-gamut research. An algorithm/table change requires a new route version.
+The `negative_scan_ap0_v1` route preserves FPW source revision
+`ae3428acd98e39c48784a79dc8f3369ab1236cb1`. AP0 is the fixed transmission
+transport for these two calibrations; it does not select a new engine working
+space. An algorithm or table change requires a new route version.
 
 ## Source and output contract
 
@@ -51,7 +49,7 @@ can retain or read these textures after successful completion.
 ## Exact order and regional semantics
 
 The full physical film chain completes before this consumer runs. The retained
-FPW shader then performs these operations, in order:
+shader then performs these operations, in order:
 
 1. Read a source pixel at its full-resolution output coordinates.
 2. For a calibrated negative, invert transmission, apply the frozen AP0-to-sRGB
@@ -84,19 +82,14 @@ also checked. The shader itself is unchanged.
 
 ### Observed original CPU fallback discrepancy
 
-The pinned FPW `film.rs` reference/oversize fallback obtains a resident display
-plane before its CPU calibrated inversion. With a reduced region, that route can
-reduce negative transmission before inversion. Its later CPU finish stage can
-also occur after display reduction. This ordering differs from the accepted GPU
-`physical_output.wgsl` route described above.
+The historical reduced CPU fallback can reduce transmission before calibrated
+inversion and apply finish after reduction. This differs from the GPU order
+described above; the nonlinear operations cannot be freely reordered.
 
-This migration preserves the accepted GPU order and records that discrepancy.
-It does not claim that the original reduced CPU fallback is identical, silently
-rewrite the original behavior, or qualify every FPW export/oversize fallback.
-`positive_scan_v1` and `positive_rgb16_v1` are deliberately full-size CPU APIs.
-A CPU consumer that needs GPU-compatible regional semantics must invert the
-full plane, quantize/finish, then crop/reduce the resulting codes. The new tests
-use that order for their independent CPU comparison.
+`positive_scan_v1` and `positive_rgb16_v1` are full-size CPU APIs. A CPU consumer
+requiring GPU-compatible regions must invert the full plane, quantize/finish,
+then crop/reduce the resulting codes. Tests use that order. Adopting this route
+for an existing reduced CPU fallback requires an explicit compatibility decision.
 
 ## Ownership and the publication boundary
 
