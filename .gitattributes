@@ -6,3 +6,6 @@
 /crates/spektrafilm-core/tests/fixtures/fpw_physical_output_v1.wgsl -text
 /crates/spektrafilm-core/tests/fixtures/fpw_negative_scan_v1.rs -text
 /crates/spektrafilm-core/tests/fixtures/fpw_finish_v1.rs -text
+
+# Preserve the audit bundle's recorded bytes on every checkout platform.
+/docs/maintenance/validation/fpw_vendor_20261113/** -text

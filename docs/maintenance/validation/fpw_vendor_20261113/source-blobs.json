@@ -1,0 +1,576 @@
+{
+  "repository": "ye602a/fursuit-photo-workflow",
+  "commit": "ae3428acd98e39c48784a79dc8f3369ab1236cb1",
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "git_blob": "9d4de403d3960bef80ddc6a0fd24f4deddab1ced",
+      "sha256": "bab8cccec3244167cf7174177ccb9d7656292258ab5dbf3e244bb7c8ac186c07",
+      "bytes": 146955
+    },
+    {
+      "path": "Cargo.toml",
+      "git_blob": "3d427b21606cbf8ab69f2a10f701852e9b0326e6",
+      "sha256": "c31cd6dd65f7fa905997ac91ad04599aea73e95d5ba47e1a8427aeffeb29599b",
+      "bytes": 1390
+    },
+    {
+      "path": "FPW_SOURCE.json",
+      "git_blob": "200c2c49f4b2bceea5207736f2f1e5020906a62d",
+      "sha256": "e4ed54476cc7a47588f648bef70dbc9593c792f761761f392556edf7449cce81",
+      "bytes": 1688
+    },
+    {
+      "path": "LICENSE",
+      "git_blob": "3877ae0a7ff6f94ac222fd704e112723db776114",
+      "sha256": "230184f60bae2feaf244f10a8bac053c8ff33a183bcc365b4d8b876d2b7f4809",
+      "bytes": 35823
+    },
+    {
+      "path": "SPEKTRAFILM_DATA_LICENSE.txt",
+      "git_blob": "b293006793a1344f319311a23032c6a0efa810d5",
+      "sha256": "7a492239d6c6dd419f5ab730e43501bf7c2bcf6465003ca1f89ee62854f6b7e3",
+      "bytes": 24197
+    },
+    {
+      "path": "crates/spektrafilm-core/Cargo.toml",
+      "git_blob": "e1c0357410e174462a17086c9d8dfe4c885fa0d4",
+      "sha256": "5094aed5db983fa86a9944e25e74211daf65a2ddc2dc1b25eedc3b12ec6a9826",
+      "bytes": 860
+    },
+    {
+      "path": "crates/spektrafilm-core/src/color_reference.rs",
+      "git_blob": "db9afb6a95ef6f2ccd55d2ef67942f89adc1a6cf",
+      "sha256": "63f9e7b159c7016be0629b03139ff0558fc3c76afaf44b74a883e212ffbbbcc0",
+      "bytes": 21895
+    },
+    {
+      "path": "crates/spektrafilm-core/src/data.rs",
+      "git_blob": "c0426f3b1e65cf887367ae7930245ca0c3289acb",
+      "sha256": "f82075e1931b5fad559228406ff52d8a90dc2541826d2c4240353fa90ee06020",
+      "bytes": 713
+    },
+    {
+      "path": "crates/spektrafilm-core/src/enlarger.rs",
+      "git_blob": "675706b2b167169c695cf09f4ac69c1dcb3db9fa",
+      "sha256": "07009ceb7e43276792d96a1a644b520a2a9c9ebe2b1ff65286bd807acb2e2159",
+      "bytes": 22222
+    },
+    {
+      "path": "crates/spektrafilm-core/src/gamut_compression.rs",
+      "git_blob": "dcde68708229fc7de4ce4e70358181e800324bab",
+      "sha256": "a9b07832ea1f1dba235553d9832fbac274e40cd083f2d69fb5fa614fac8553cc",
+      "bytes": 29711
+    },
+    {
+      "path": "crates/spektrafilm-core/src/grain_layers.rs",
+      "git_blob": "dc0d2859c63bef5fbc6d32e8952abacebb4076e9",
+      "sha256": "74ce7ba3a99c3bcf7f7ba6a16fcab7260835ec2c1211db8a181f3069513a457d",
+      "bytes": 3190
+    },
+    {
+      "path": "crates/spektrafilm-core/src/input_gamut.rs",
+      "git_blob": "a1a965741dc58ac228ff19b0e393aae8695c1733",
+      "sha256": "5c539319a3686f00c2032d1d398a02d7e6ab882d59be0cdc29dcbe119b64b7a1",
+      "bytes": 10223
+    },
+    {
+      "path": "crates/spektrafilm-core/src/lib.rs",
+      "git_blob": "26074bb70252cf039aba32073122a3871859ee7f",
+      "sha256": "4c34d832b5555115122c9ab28cb48c8efc579b9c5da8ef7d2da42c2586225d8e",
+      "bytes": 274
+    },
+    {
+      "path": "crates/spektrafilm-core/src/mallett.rs",
+      "git_blob": "538ed63231a1bbf95626a882ec023b1ebda4bf41",
+      "sha256": "2da9fba0b09bb7f7548f2f7951d4350c7a8058a0da772ce9fd8ffe04edca8fb4",
+      "bytes": 23106
+    },
+    {
+      "path": "crates/spektrafilm-core/src/neutral_filters.rs",
+      "git_blob": "3b8f0befc02917d334740a91ba4dbe77ab50f8c9",
+      "sha256": "2b4a7d83336d9cf0e043befe49a2f44f268b376f79594fee373362f395407b36",
+      "bytes": 1775
+    },
+    {
+      "path": "crates/spektrafilm-core/src/params.rs",
+      "git_blob": "0ec1052812d84330f4d761608eb72f5d16f016c8",
+      "sha256": "8eff82b7bcf5426fe7e723bc39b4297bb612853f7d9e03cf666b1a9e793cd157",
+      "bytes": 25978
+    },
+    {
+      "path": "crates/spektrafilm-core/src/pipeline.rs",
+      "git_blob": "d6a1bb591ea2ae2d5fa1f32a0fc0862880466a7e",
+      "sha256": "bc6f408f3fd950cc34b55b305222b4a09eaa55b5fac1ba45c200fe3846467258",
+      "bytes": 56350
+    },
+    {
+      "path": "crates/spektrafilm-core/src/print_morph.rs",
+      "git_blob": "20c86600b41935b296283d41eef3ff90f96ca8cc",
+      "sha256": "55d1b7c70235a0af0b4eb4e5ed22b9afcda69abcb3c76fe3bc697373e451d11a",
+      "bytes": 18784
+    },
+    {
+      "path": "crates/spektrafilm-core/src/profile.rs",
+      "git_blob": "e89361be1d47acb85b2f8edc20f897e320f842d9",
+      "sha256": "eee4c22a477d1ad8ee9047a849246a703ad71d780dd84871912b5c15c7c6f38e",
+      "bytes": 23466
+    },
+    {
+      "path": "crates/spektrafilm-core/src/spectral_service.rs",
+      "git_blob": "4e0d376832a82f5e0c5537a3d932cac851ddd8cc",
+      "sha256": "fe42ff388c1c02c130363b83d7c35041b42b592dd216968a9eaa3afac02c858d",
+      "bytes": 13101
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/debug_compare.rs",
+      "git_blob": "39bfd391eecfa9988ec432a1b9bb918652b22fc8",
+      "sha256": "6a46c63c8a689ea44cbd179b6d22006911a61807e5b8c31cb35674f5bad3b357",
+      "bytes": 16948
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/filming.rs",
+      "git_blob": "0de06462ba746b24518ed2a1b1f7f68d3909d523",
+      "sha256": "716588bf9de681fc9d04acc11846421982bdff281bbf27d5d4fe255fa9b87022",
+      "bytes": 22815
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/mod.rs",
+      "git_blob": "d47808927f3e758ddd45484b57bd407db69ad5b0",
+      "sha256": "96dd8b29498f925480c149351638312330043737cd96fce0d3b1fdb7fa0abd5d",
+      "bytes": 14041
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/printing.rs",
+      "git_blob": "3cecf98564e2588cb4df0e4b7d1dc6a275cb3480",
+      "sha256": "59d9d81ed793e3bd2524bb0478bef6434a8e907b3469b06df39a5eb52b07183f",
+      "bytes": 18241
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/scanning.rs",
+      "git_blob": "db6a62508584c831027afa290e2115c9bc7e8690",
+      "sha256": "1daa9a0d1722657bebb83e1c5604ae52ccb9a1f3c5f0075f4960b8e239897905",
+      "bytes": 19469
+    },
+    {
+      "path": "crates/spektrafilm-gpu/Cargo.toml",
+      "git_blob": "172cb25a57c58212065ba9c3581f0c3c36ef136e",
+      "sha256": "e83fcf3346efad11684bd489f59a062ffcb02850dba5399b397905ac0fc09f6d",
+      "bytes": 1223
+    },
+    {
+      "path": "crates/spektrafilm-gpu/examples/blur_bench.rs",
+      "git_blob": "da195df1399c27132ef4481439b59515d8ddf921",
+      "sha256": "d0933122e7596f64ca9c7d7b03f6e5bdee1bab80829b5412d0113a5b2d1f2422",
+      "bytes": 1761
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/cpu_backend.rs",
+      "git_blob": "b10e9a4bfd8c6471667719bc291950fbaf1f57bd",
+      "sha256": "c6a18908c37313116e08254f49154fe20e229199424e27d391d2ca05e8c923a2",
+      "bytes": 19911
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/cuda_backend.rs",
+      "git_blob": "ba7aa94b62faec56cec5096f3ceac28a2b36ada6",
+      "sha256": "b4950c0304a4f81e99bcd076c9e710798c489883b2cc1004a7b030701eca4a4a",
+      "bytes": 86163
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/film_display.wgsl",
+      "git_blob": "99c58ba9e2e8514537395c805cbc1628883c6e4e",
+      "sha256": "0ba513871392cf167404a930c87bdef7f435b41c8599480b5c63fc661dc136bf",
+      "bytes": 1679
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/film_quantize.wgsl",
+      "git_blob": "81903151d3a160002e6d187081063458f087eb74",
+      "sha256": "330446b71a5c40add136dc55f894484fa1b693f6b4165249d315d7d1b819177d",
+      "bytes": 1570
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/grain_iir.rs",
+      "git_blob": "41e74161264303825653d6998b9291991f6ffb80",
+      "sha256": "060cf1750131f7ce61f5d6f635855bd7ceece7dc8aef67bcb111816c89ff407e",
+      "bytes": 13826
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/layered_grain.rs",
+      "git_blob": "4d89c7b6d1a921ab050805968a873b518cb24065",
+      "sha256": "abc233b29a307619cb8bf7614c14e8c676618a84439b9c0c2e00cc4171fc0c16",
+      "bytes": 19209
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/lib.rs",
+      "git_blob": "448a4564adddd2371679376841afcf6de24c4b8d",
+      "sha256": "9217f83d77bfb0b68db4c0cabc406ba968fb2104cd4c12a611221bb01c8a917a",
+      "bytes": 19666
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/wgpu_backend.rs",
+      "git_blob": "934e80eb47aa5bf58fa80ee2bc9c4037fe14d459",
+      "sha256": "12f98a931709640a3529a6292b37ce450463cb8546de8eec7f5c22a2e7903016",
+      "bytes": 224030
+    },
+    {
+      "path": "crates/spektrafilm-math/Cargo.toml",
+      "git_blob": "38bb42c6d90c89268214ada0ebc692a433c247fa",
+      "sha256": "18c87b6679d99ca5bf237ec9b154c64abb526096c4138f44274d752ab750c8d7",
+      "bytes": 398
+    },
+    {
+      "path": "crates/spektrafilm-math/src/colorspace.rs",
+      "git_blob": "3f8a4965bf6e0508d2a5b66a23ccb565f45c93fc",
+      "sha256": "dbf0cd78681a6c32d12878707fb63a5b9f75a10884e0005fd36f063759e6f64e",
+      "bytes": 13653
+    },
+    {
+      "path": "crates/spektrafilm-math/src/fft_conv.rs",
+      "git_blob": "7687196fc01e2ae585bd6df940710c228d229675",
+      "sha256": "99016b5505042c129b744a96bc8123ea9b5639e17cf73d84a8d56c8f731aa39d",
+      "bytes": 8860
+    },
+    {
+      "path": "crates/spektrafilm-math/src/gaussian.rs",
+      "git_blob": "3ee3b9173c6b3862def64dff121826a59395f260",
+      "sha256": "dba7e0827dbcc0b4eb3d28f73edaac7db8f8b184fb3e6e1f84e57c0e5322d055",
+      "bytes": 11201
+    },
+    {
+      "path": "crates/spektrafilm-math/src/image.rs",
+      "git_blob": "ff768ece4828036c953b66046c2a1af0b67fb6d8",
+      "sha256": "afb277214685734d7437285589ad8e6e39ab2fa8d519f5666da92d66976a4076",
+      "bytes": 5143
+    },
+    {
+      "path": "crates/spektrafilm-math/src/interp.rs",
+      "git_blob": "78c51268928809699580101c8f9aea509c6e2300",
+      "sha256": "fe8fa16cc84c660b4e86cdf4958d1014db3e9c3ccbe402505ef17ad43945e438",
+      "bytes": 11038
+    },
+    {
+      "path": "crates/spektrafilm-math/src/lib.rs",
+      "git_blob": "21deead5f4cd109f9a28903765e7c2c951d050eb",
+      "sha256": "cd73b5ee9fb93c45bb5e1a559d268924fd88d1fb11fbb4c7cbec142a3e8f80aa",
+      "bytes": 260
+    },
+    {
+      "path": "crates/spektrafilm-math/src/lut.rs",
+      "git_blob": "46f73221dc402c7f8191904fd0ec4a4a83236e37",
+      "sha256": "fdf6404b6f266d52629163940cda267a1496447b52aa4574ceae65a7515d9c80",
+      "bytes": 8077
+    },
+    {
+      "path": "crates/spektrafilm-math/src/npy.rs",
+      "git_blob": "1fe95207960ba9d902b59175ab5cc090913ef04d",
+      "sha256": "ca9a17373d7b754fcac3f5752a868a7cdda799139aca8ee5375a955366bdb17c",
+      "bytes": 4817
+    },
+    {
+      "path": "crates/spektrafilm-math/src/numpy_rng.rs",
+      "git_blob": "e7e9c56bbe31ccd9848d261510b0762f981d8ea4",
+      "sha256": "4fc96a6f97a4a3afba5481c05230ec66263a38aa4a8d89b2fe141b24984e9476",
+      "bytes": 12400
+    },
+    {
+      "path": "crates/spektrafilm-math/src/pchip3d.rs",
+      "git_blob": "51d0afd71c6f82651dc856d672880e7c9312dab8",
+      "sha256": "c10273e48aa40bc1de6865623de1f8fcf91bfad57f06c369dd2c7ca9f767f5c2",
+      "bytes": 12761
+    },
+    {
+      "path": "crates/spektrafilm-math/src/precision.rs",
+      "git_blob": "28a8276f1866b986523ac2b19cc55ec53ab45342",
+      "sha256": "52c0acc46008a1372f4e886d5baee2e73f6b8ca9a44361f3531ad760803d72c6",
+      "bytes": 1982
+    },
+    {
+      "path": "crates/spektrafilm-math/src/spectral.rs",
+      "git_blob": "e52183acb73adf3550a878b4fc269b186d3cc60d",
+      "sha256": "d320bd6744b4e2c41d6c3e4b54ede7e4b9730c86a37d95663e1d0ff7f86603ea",
+      "bytes": 39430
+    },
+    {
+      "path": "crates/spektrafilm-math/src/stats.rs",
+      "git_blob": "6953835cf1e6004375bc3da81ccefbdf3c4a378c",
+      "sha256": "9385b42d83fd746d25cffa00179f0aa502f045b301c750c0754b4e4cde9af272",
+      "bytes": 2988
+    },
+    {
+      "path": "crates/spektrafilm-math/src/vforce.rs",
+      "git_blob": "e9883226f6bed89fd4e2475388895f963695bfc3",
+      "sha256": "01b7a92ba7440dd3e683556923885e95fc9db3a406de1a1ac540efc0a5791ab1",
+      "bytes": 2004
+    },
+    {
+      "path": "crates/spektrafilm-model/Cargo.toml",
+      "git_blob": "bede9da34353e0fb985c6eafe846c86ff381074a",
+      "sha256": "0c0a91dedffe2f3aa38ef1df0ed5a077d6da6168070e36b513a96a2095922ec9",
+      "bytes": 466
+    },
+    {
+      "path": "crates/spektrafilm-model/src/couplers.rs",
+      "git_blob": "0831823499b6292d96fa7c08ca309e31ad1d0b48",
+      "sha256": "f10de92ec13cad83f6bf5b9df6a31c7c02561c924c790167185ebbdfb37630e7",
+      "bytes": 8891
+    },
+    {
+      "path": "crates/spektrafilm-model/src/density_curves.rs",
+      "git_blob": "4cb43c48a5c67948792eda20fecaf53712ecd69f",
+      "sha256": "7965c473ca9703781f3b5579e6a2f962aea450f6c3f864233e1c18080ace1d9b",
+      "bytes": 5925
+    },
+    {
+      "path": "crates/spektrafilm-model/src/diffusion.rs",
+      "git_blob": "1c0cc33ce707e657797e9a5ce039c663550ac49f",
+      "sha256": "bf04075fc67483de7cabfd9b09169686e970dd880063bd080b4dc44d2a2c56bd",
+      "bytes": 32235
+    },
+    {
+      "path": "crates/spektrafilm-model/src/emulsion.rs",
+      "git_blob": "8ac59325d6f8974869e10fdd81762b0598d1445d",
+      "sha256": "d58fca1cb62a237c492e4c62e69e19573469f282c5d75688a57a7f178047fec8",
+      "bytes": 3218
+    },
+    {
+      "path": "crates/spektrafilm-model/src/glare.rs",
+      "git_blob": "678fdc13cb904cdb92fc900698f99d302cc9318f",
+      "sha256": "8cf0b94ce08bb376084beaef7a04d811835e84cddee0d6d67d3c9bbce2c4cc7e",
+      "bytes": 4831
+    },
+    {
+      "path": "crates/spektrafilm-model/src/grain.rs",
+      "git_blob": "fed781e1c8222f7da8692979f2541b01d1bef3ef",
+      "sha256": "4271d84ba6125096a6fe6bcbc88929736c0b85f078f720d440bfd2057ad713de",
+      "bytes": 7466
+    },
+    {
+      "path": "crates/spektrafilm-model/src/illuminants.rs",
+      "git_blob": "647ad9bd7f5fea4bb9d7c122a22eea3fb22143f7",
+      "sha256": "fb441481537b828fd1088bfa80d41c6a855083bda0402eab7afe0e87ed6abff3",
+      "bytes": 2327
+    },
+    {
+      "path": "crates/spektrafilm-model/src/lib.rs",
+      "git_blob": "3e3aff813e181883ac6877fc282157944a46d608",
+      "sha256": "d91746d470b0d25535e096bf5e16ee1a7c0bcb1596d02e0ffedc062fdca8191d",
+      "bytes": 137
+    },
+    {
+      "path": "crates/spektrafilm-shaders/cuda/grain.cu",
+      "git_blob": "e1312dc44dd1684ae34da0a0cd148bdb41eb5035",
+      "sha256": "9c27b1cd0621d445e71386fad2672e178bc9bdd4d422880ad0cd2ea7bebf97eb",
+      "bytes": 3326
+    },
+    {
+      "path": "crates/spektrafilm-shaders/cuda/print_spectral.cu",
+      "git_blob": "72c5d33c0aefe51b596bf3ef62e4df336e04f542",
+      "sha256": "8b7482864a4a61c98bfae2973fca1bf8f79dcaec9786b25c3585fb154bbc2400",
+      "bytes": 1776
+    },
+    {
+      "path": "crates/spektrafilm-shaders/cuda/scan_spectral.cu",
+      "git_blob": "fc6ceba727672d4e2cfb7b755c7a73372aa13cea",
+      "sha256": "b90d826c3f4d75e71573eb0b1cd6ec305b301e8a18db3acc28f115fabb2e9f30",
+      "bytes": 2171
+    },
+    {
+      "path": "crates/spektrafilm-shaders/metal/gaussian_blur.metal",
+      "git_blob": "a6f10baddafde7fa5174961640532acdb5519796",
+      "sha256": "3b1de0d0e4ba1942ec6216c95ea57eea58b5cf9dc267ce8da042d35056559e34",
+      "bytes": 1526
+    },
+    {
+      "path": "crates/spektrafilm-shaders/metal/print_spectral.metal",
+      "git_blob": "7e707ba9ca00bcda0519736634aff846aae04668",
+      "sha256": "2717f9e6f6f4279b6cd246afbd1de5c77080d4868a6031a268c90669a1674f1d",
+      "bytes": 1764
+    },
+    {
+      "path": "crates/spektrafilm-shaders/metal/scan_spectral.metal",
+      "git_blob": "a12a8e2e957e8b9ef037fb9cad86df7905322b53",
+      "sha256": "96d60d6571d5546b270bc2af50d78c02bd53f183e0143105a8a759bf225db8d5",
+      "bytes": 1980
+    },
+    {
+      "path": "crates/spektrafilm-shaders/vulkan/grain_iir.comp",
+      "git_blob": "03fef65bbe363a1a82a0bcf6e8979ea643a896b3",
+      "sha256": "3fca04e2b0498f769d7df1f29a020c5be49a4d1f7769f920e529df5a3f25d03e",
+      "bytes": 3679
+    },
+    {
+      "path": "crates/spektrafilm-shaders/vulkan/grain_iir.spv",
+      "git_blob": "e23544d20d7f402a70b7005fb7531721793870e3",
+      "sha256": "affd0c4135c9e081e5f997693897f64ba29323e52d4c4a0f76e372ddff6a7799",
+      "bytes": 13372
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/add_scaled.wgsl",
+      "git_blob": "feea4cc3a09492b91fc89420730f54d93720d270",
+      "sha256": "2ebaaecee0be8f213d384da7bc4f38a8ea10f55b2da96ac0c13be83bcc52b10c",
+      "bytes": 1099
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/add_scaled_per_channel.wgsl",
+      "git_blob": "b5a68ec716f444c043dd9e155f8c7875b092968e",
+      "sha256": "b415b6e8719e054691f7b99804cd813d39ebf13722316bc06eb405d495bbab85",
+      "bytes": 1193
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/density_curve_interp.wgsl",
+      "git_blob": "89084d3e3f4955a74a6d7b8160cd732ad94520a4",
+      "sha256": "beda4166da81676d0121040a3993af51054d9694e2de7a54138d395e503b6c5e",
+      "bytes": 3101
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/density_interp.wgsl",
+      "git_blob": "8a1483ebd05b50685e2661c45a77ce8b28083989",
+      "sha256": "e402d833196cfab50ed9fe60c653e942ce6c636fa87b726bbc810c2dbabaeb17",
+      "bytes": 1679
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/dir_matmul.wgsl",
+      "git_blob": "c2d79c329ab74f2269c6c94fe191d20b44606780",
+      "sha256": "f81a7f2f54d6e774476ff37e61ae9c47652c3f735d9273a3d613498425032af2",
+      "bytes": 1827
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/downsample_area.wgsl",
+      "git_blob": "f55254e78ce770e97b0adfe2a8defa42d2d8d600",
+      "sha256": "ee3beaccb22b29d3907a0ba324d4dc69bf234c67c1ba388c228086c24e3c87d8",
+      "bytes": 1496
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/gamut_compress.wgsl",
+      "git_blob": "7a58dcb424e5d774a90a417f529148ca8722706e",
+      "sha256": "888fffb736e3d3cc10f75c711b2a853854d5ca560e9875155301d2204ccc9760",
+      "bytes": 12528
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/gaussian_blur_h.wgsl",
+      "git_blob": "176c799f01839dd319ca869c83e74aa30db5e56b",
+      "sha256": "106d695da085c09f07af522a961bbb825cf12d273c2985b1d6fd677d57e7267d",
+      "bytes": 1623
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/gaussian_blur_v.wgsl",
+      "git_blob": "f021d8bb26fd30e141489d7a9ffdbf768c2ad08e",
+      "sha256": "67d08669eecf8ea849d564cf4e4902a8b0ab605a6b73b44c0e40ae922fe8d5a9",
+      "bytes": 1337
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/glare_apply.wgsl",
+      "git_blob": "f035ae07fd422b74db2243623ce3c68c0c1aeea2",
+      "sha256": "5f694bdca42ecc1e762fd4a3750ab45bc4ac3e712b112c6c9cdd694463a3ccf1",
+      "bytes": 1141
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/glare_gen.wgsl",
+      "git_blob": "3ab463c4e8f7a99f8271dfaa3d7e375e56d57247",
+      "sha256": "2b77186022b67ee7ace073a0e199c9b0226e1fdde8f3e8eecb4abc741c001a0d",
+      "bytes": 1712
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/grain.wgsl",
+      "git_blob": "1326e479f1496bcde64c4d8a1ac7eb77296bf69f",
+      "sha256": "a864392530b1ae24c31250858fd852e4d93f5dd419b7258bc6bccc5e3b20c800",
+      "bytes": 4751
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/grain_layers.wgsl",
+      "git_blob": "f41b710af3f882cab89f04e6af7790fb8511f520",
+      "sha256": "367c57a7f24a38a190088fbc2c5801202d1a45467d5bd60e3297f4d061e6c369",
+      "bytes": 6630
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/grain_reference.wgsl",
+      "git_blob": "0b6f4538a5236dac7c8fc575bc460a645471389f",
+      "sha256": "6482a2bfb79fcee83d53fb4db42701046cdce51ff382d4f6241bbc27cf1c830f",
+      "bytes": 792
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/halation_renormalize.wgsl",
+      "git_blob": "2e8b5b1e4aa6b9686db85436d456823e2d124d5b",
+      "sha256": "af28482b8eafc7a41bd7617b389517404c8b261f4394839b48877389b3293a69",
+      "bytes": 948
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/hanatos2025_rgb_to_raw.wgsl",
+      "git_blob": "ccc6ae6aae5aa95209ae8ed4971952e655d50c36",
+      "sha256": "4bfa0bf29aa9b5437280251ff51550b5505429090d9dee0c60f99adf88d8f043",
+      "bytes": 5496
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/highlight_boost.wgsl",
+      "git_blob": "9e0c377f7caab1140705214a411130f725648390",
+      "sha256": "cad10056193d56bf3355b6ebea607dbc00d2db9a33a0b7ce489c48b8690ce600",
+      "bytes": 1329
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/linear_to_log10_outer.wgsl",
+      "git_blob": "03a8728566772cb631032fb0465fef07d3e86575",
+      "sha256": "216ce823361f678ed041dd4b17b82f7299d8dda027e970e31fe75c6ff0ef6bd4",
+      "bytes": 739
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/log10_inplace.wgsl",
+      "git_blob": "6bec8dc895453215a2b0ba2823d8691d5a48ab55",
+      "sha256": "be681568465611900863af24199bfcee0f6525b74b5d5d55473dbbaf99699338",
+      "bytes": 940
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/log_to_linear_scaled.wgsl",
+      "git_blob": "5767981daaf39a7375d4f329f165fb9341cf41d7",
+      "sha256": "7a5e9909d2d5f9ff963bb82efb9478c720a3fada24b8df7285f1570e9ff43cc5",
+      "bytes": 653
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/mallett_rgb_to_raw.wgsl",
+      "git_blob": "5d4033da7aa4ad3ed1b5fe6e46aeb61bc1b2286f",
+      "sha256": "45924c3da68bc72ec138cbc193ee7ea3ad901138273d61dfad761a14492a912c",
+      "bytes": 1201
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/max_reduce.wgsl",
+      "git_blob": "489847d7ff1687442ab6c6c3315fd64ee3ff60e9",
+      "sha256": "86d753e543f7d09d863c570986db690f10145b24e0626dd1c8300922334d1aa9",
+      "bytes": 1218
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/post_scan.wgsl",
+      "git_blob": "a8703017cb2e424727a00699bb94ba2fd6ea2d15",
+      "sha256": "b56da6a23e23600c080ba935cb9d93f69d366592ad96ca472fd018a755408bda",
+      "bytes": 1095
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/print_spectral.wgsl",
+      "git_blob": "2bcba19a2aaf0dd3674bbf126fed08d33b122a82",
+      "sha256": "a5025e5170b95d147a643ac329ad32c005276011c8b2c8565cf3e1753d7a680f",
+      "bytes": 2917
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/scan_spectral.wgsl",
+      "git_blob": "f545e55cea5838b7f893ff0934dfaf6b4611049d",
+      "sha256": "3a4778bee57996e8bc430135d29c101c5874e2e513d55ae0ddf600e779cfd496",
+      "bytes": 3595
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/scatter_mix.wgsl",
+      "git_blob": "1ec9fc61bbf0298e8cac22203ca13d3ce72107a2",
+      "sha256": "4a917c9b371675249e0a095dd2717e91c48973b5e29093fd07c35a4fe93c7b6a",
+      "bytes": 1370
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/unsharp_combine.wgsl",
+      "git_blob": "afafc092ecc81fb0c99d8b2850596c1897ba304c",
+      "sha256": "94ac79957c50b632bcab7a6a62c661d1de3a17e975a99ce6d6a1328cf51ba30d",
+      "bytes": 1066
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/upsample_bilinear.wgsl",
+      "git_blob": "8696bc04a288c01ecdba3e27633a0c2e4fb7c95a",
+      "sha256": "b4fc06be295c8658733a0bbb4687f0e8f613170a05ad31f14bd704702de94c64",
+      "bytes": 1693
+    }
+  ]
+}

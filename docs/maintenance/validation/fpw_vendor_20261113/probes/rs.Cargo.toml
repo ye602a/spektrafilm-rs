@@ -1,0 +1,14 @@
+[workspace]
+[package]
+name="qualification-probe-rs"
+version="0.0.0"
+edition="2024"
+[features]
+candidate=[]
+[dependencies]
+spektrafilm-core={path="${ENGINE_ROOT}/crates/spektrafilm-core"}
+spektrafilm-gpu={path="${ENGINE_ROOT}/crates/spektrafilm-gpu"}
+spektrafilm-math={path="${ENGINE_ROOT}/crates/spektrafilm-math"}
+serde_json="1"
+wgpu={version="=30.0.1",default-features=false,features=["std","vulkan"]}
+openblas-src={version="0.10.16",features=["system"]}

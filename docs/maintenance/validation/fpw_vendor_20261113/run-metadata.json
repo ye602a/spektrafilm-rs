@@ -1,0 +1,39 @@
+{
+  "reference_commit": "ae3428acd98e39c48784a79dc8f3369ab1236cb1",
+  "candidate_commit": "c0308a25e5d98f8db9864ceef191e2a9aeee4e43",
+  "candidate_worktree_clean": true,
+  "rustc_verbose": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-unknown-linux-gnu\nrelease: 1.100.0\nLLVM version: 23.1.5\n",
+  "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+  "target": "x86_64-unknown-linux-gnu",
+  "profile": "dev, unoptimized + debuginfo",
+  "backend": "Vulkan",
+  "adapter": "llvmpipe (LLVM 19.1.7, 256 bits)",
+  "adapter_evidence": "host_device regression in same environment; both probe launches force the same lvp_icd.json and require PASSTHROUGH_SHADERS",
+  "vk_driver_files": "/tmp/rs-migration-deps/usr/share/vulkan/icd.d/lvp_icd.json",
+  "openblas_num_threads": 1,
+  "blas_linkage": "same extracted system OpenBLAS pthread library for both processes",
+  "original_declared_dependencies_preserved": true,
+  "original_vendor_lock_stale": "Pinned vendor Cargo.lock contains wgpu24.0.5; resolved original manifest requirements (wgpu=30.0.1 and newer dependency declarations) into delivered fpw lock. No dependency requirement was downgraded.",
+  "rs_lock_source": "Seeded from candidate c0308a Cargo.lock; retained versions, added separate probe package and explicit system-OpenBLAS feature dependency.",
+  "source_blob_count": 95,
+  "source_reused_exact_blob_count": 6,
+  "source_fetched_blob_count": 89,
+  "reference_numeric_or_shader_edits": 0,
+  "reference_manifest_edits": [
+    "omit uncompiled CLI/GUI workspace members; original manifests identified in source-blobs.json"
+  ],
+  "resources": {
+    "count": 55,
+    "exact": 7,
+    "lf_to_crlf_only": 48,
+    "shared_input": "both binaries read the same strictly audited RS data files"
+  },
+  "probe_manifest_packaging": "Only absolute ENGINE_ROOT paths are replaced with a placeholder in the delivered manifests; prepare.py restores paths for a chosen workspace.",
+  "timing_note": "Recorded per-case seconds are diagnostic only; the reference and candidate observed different compilation/driver cache warmness. This is not a performance benchmark.",
+  "reproduction_preparation_checked": {
+    "source_resources_hash_verification": true,
+    "reference_metadata_locked_x86_64": true,
+    "candidate_metadata_locked_x86_64": true,
+    "physical_run_repeated_for_packaging": false
+  }
+}

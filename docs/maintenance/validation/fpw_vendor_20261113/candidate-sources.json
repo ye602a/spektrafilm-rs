@@ -1,0 +1,434 @@
+{
+  "git_head": "c0308a25e5d98f8db9864ceef191e2a9aeee4e43",
+  "working_tree_candidate": false,
+  "files": [
+    {
+      "path": "crates/spektrafilm-math/Cargo.toml",
+      "sha256": "51732ff99a16bb747f54b0cf57bf2e9239aef65b1addff42310436399b9dce69"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/colorspace.rs",
+      "sha256": "3490b4f21f1662f6c07bf7eb1c1f944be5a2daaf8f3dd431b4f019a17be8df7c"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/fft_conv.rs",
+      "sha256": "b96ea93009748750b5e2fbe8c393b154580990452a6fece9dffb2eb4b65ff9d2"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/gaussian.rs",
+      "sha256": "de75f20253bade8e7507811cf799c3e1d3f1d538aece7226a84db93ac5ff5fe7"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/image.rs",
+      "sha256": "e2dba37c03ad4b85073d3e5a67f9a1d65b8eb48ff9c7eb8f2a66acaf9ec8548c"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/interp.rs",
+      "sha256": "f468f40eb3f65d9437d451e04a1e94d6636082de27ecd2197acc3c571c07c7ef"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/lib.rs",
+      "sha256": "caa29ef662294bf18f051a60d50de5802bcfb184bc65acecd02c1a272e032243"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/lut.rs",
+      "sha256": "2665ac699d0db641a7cd41c2e3656a29722eec9d4ad471cc2d637629d1a7f485"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/npy.rs",
+      "sha256": "4bad9e2eec296addf347a5d98d0b977c8ef430128a5380f418524e18dd8d49be"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/numpy_rng.rs",
+      "sha256": "90af6ac006393d1436d8c3c344ed9941c177639bfeb950648dfdd65417cb35fe"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/pchip3d.rs",
+      "sha256": "b81efc5cfcd3acd21a010ad79403ae1db45092c9622c3d1e9683f7933fb4ef75"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/precision.rs",
+      "sha256": "4ac648ff32c87e383e3f0f8b9a67bd9857dbaab1dbb15cad4871cee6c9a9ce65"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/spectral.rs",
+      "sha256": "667a41c8f90165ad52ca8e35c45b11b6a368e637f9ecb90a96d6236ce5b34d03"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/stats.rs",
+      "sha256": "841ab02e402784a0e94610b00c541a43d881293b8a1d87d43096d69f0149d4bd"
+    },
+    {
+      "path": "crates/spektrafilm-math/src/vforce.rs",
+      "sha256": "392823f9cdf7f193a872a8f7ff410896a528bd9177c86ac11f91ab58f655e1fe"
+    },
+    {
+      "path": "crates/spektrafilm-model/Cargo.toml",
+      "sha256": "32e005919a47438517b9922a77f3a46759baa2dcafd9537726fdbb030748792c"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/couplers.rs",
+      "sha256": "a262d3252314670a124afde3477d3aaf44abaa2735fbdac610bb20feab5d396a"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/density_curves.rs",
+      "sha256": "9af234bad7a575a7113efa77c7dad7b1407f531424d500fb05c69c4b53f38831"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/diffusion.rs",
+      "sha256": "2403bae5c04baafb77de42b69785327ea3cd62f00e1c36394eedf7e0b64035ac"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/emulsion.rs",
+      "sha256": "ba3b2f03d1c09f7e5a70171702c970045fa6383d6730c05d4e2aedd31037c9ac"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/glare.rs",
+      "sha256": "be9fcab3b4bbe85cde4b9f409769f843c9985715505c91a0223aacb0c6907421"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/grain.rs",
+      "sha256": "4663d4382db9c9ebf90f2cc522ae2fd96e48edafcdfde0145eb60f49e18daafc"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/illuminants.rs",
+      "sha256": "a1bfd2abc9195ad8bd480eaf955a18fc9423ec579a99e2c5e662e740fd0ed24e"
+    },
+    {
+      "path": "crates/spektrafilm-model/src/lib.rs",
+      "sha256": "213f85e11b7b73a64abf931ba49e2cd348edeeb31d163715b6fff09c3f52ee29"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/Cargo.toml",
+      "sha256": "5cfbf9bf0de14234d42f8a2c68bd3eb7fc3eb893178169e1beb42069814de59e"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/examples/blur_bench.rs",
+      "sha256": "c00037f6e4afa4af32b07397a5f144f294f60a20298a5989a9a2438ea241997b"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/cpu_backend.rs",
+      "sha256": "5f0ddcf284a3bba667cee47a05856a51a2a1b81f00ad86abb5c870603327afae"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/cuda_backend.rs",
+      "sha256": "d1d275677b68f32c7b0c452e5e13e6e7e996d8d835060c21f4d852fe28a909d8"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/film_output.rs",
+      "sha256": "90ce239b1908508ccd6a37260f1584d03c4c52efdc95afb9d9e21bb6fcd7973b"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/grain_iir.rs",
+      "sha256": "0ba03b87caeea80ab86122f7619586357f610956f344ac31298ae93c6bc214d0"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/layered_grain.rs",
+      "sha256": "abc233b29a307619cb8bf7614c14e8c676618a84439b9c0c2e00cc4171fc0c16"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/lib.rs",
+      "sha256": "9245f010888e4efb3c877c18ec3433d3f00675745abe86a3787d2c62a295032b"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/negative_cache.rs",
+      "sha256": "531454c30ad8ecd6fd82820ba2f977b5a380837ebbcf23ad5c8c1671c9939dfe"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/output.rs",
+      "sha256": "b7d36a4a8719607b2581e1e8423138706f9ae205cead92ea123d0e4b4bee5057"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/render.rs",
+      "sha256": "ed5fccfe32c5b93e9a250e05e858af63e328139f085fa5d057e9623320710eaa"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/wgpu_backend.rs",
+      "sha256": "41add05acb026b55ba74972bef1277d3afe5c2671d108d222a0748ab7359a425"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/src/work_image_tests.rs",
+      "sha256": "f70a9494ecd13f503b6e06648be19eb8bda879de399b60e54218cd3e434e085f"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/tests/grain_source.rs",
+      "sha256": "38362b282491f0f76f2a03f4a961ce79239f5eae4872a17cfb2baebcc290dfb8"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/tests/host_device.rs",
+      "sha256": "ee193f506c33e3362f2c694d734c47264180dff5b10b09b20f42ef16ee9a4505"
+    },
+    {
+      "path": "crates/spektrafilm-gpu/tests/output_kernels.rs",
+      "sha256": "a994ea1235b4f5e72facd71845717579e525b3544c47de708fa18243b3f6ae8b"
+    },
+    {
+      "path": "crates/spektrafilm-core/Cargo.toml",
+      "sha256": "cea40e4d2a20eff7c26a49b16d18a2c3ca6066d07e64100a0dbd602fa069c028"
+    },
+    {
+      "path": "crates/spektrafilm-core/examples/fpw_host_contract.rs",
+      "sha256": "1eda31835b2d2cad5c32d1f35c475f23cc7809530eecdd227468bcc2341e2620"
+    },
+    {
+      "path": "crates/spektrafilm-core/examples/migration_probe.rs",
+      "sha256": "ded98d5da08eb94b06737bff7a1044776ed1a31b6093bf169b0e631c99722b62"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/calibrated_output_v1.rs",
+      "sha256": "8bfa0fcdc738c2df373387910ad94ea6b4543f780bf4eaabcf0c2cade972cec9"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/color_reference.rs",
+      "sha256": "5ef569f5af4032dde34dbc6bbdd91d756e2c4e5eb34bb1afcfac3e464a9c11f5"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/data.rs",
+      "sha256": "bf8f31ed14b1b23b0079b8c848a1ec24c61113aa55657828d7ffe4a718e36f1b"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/enlarger.rs",
+      "sha256": "65bb669a6a87b9361b0a3971ff999d61b1b6c377f52edacf1b8da5feb0d51408"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/gamut_compression.rs",
+      "sha256": "8374775881511d41b2f89517cf6b71343216db68288d0fb82bd485f829ad3f8c"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/grain_layers.rs",
+      "sha256": "74ce7ba3a99c3bcf7f7ba6a16fcab7260835ec2c1211db8a181f3069513a457d"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/input_gamut.rs",
+      "sha256": "51c22db8bcb672a8fa5f572f0cb233388ee44f5e8be77a02a1e9bf1bec293dd8"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/lib.rs",
+      "sha256": "f6c689e034c3be3e3c119f99b6739e7fb4e2c8d683c02ea9dfdc4c0a4e0a2911"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/mallett.rs",
+      "sha256": "855cbef187b9bcc0777d0f3c244699bc0f6fa8a2f6a34ba0f9daa54af65f31dc"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/neutral_filters.rs",
+      "sha256": "03635247c5124289a11adc618257f12f81a8279a4b61d3bb6d290fd96c409a1b"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/params.rs",
+      "sha256": "8a606c8c0665f6c336084cbb5bf8d11e0bc4df925bf9dad8a84e48d9cc9afe4f"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/pipeline.rs",
+      "sha256": "abbc6e1815d4124edf31eff69645a2cf1fa00824eebf73dd94c18d66e65fd75e"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/print_morph.rs",
+      "sha256": "375c280e4e04063104e8bd71b92620dff1493b3725d0de6ef95ed00434e9a604"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/profile.rs",
+      "sha256": "3b2e421b21cd85b2f35b957337f010665e30b37c8eee6f7def8a26d15e3fa3d2"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/spectral_service.rs",
+      "sha256": "e5964d919179a0d1529d7100d3cc270098cfc4c25ed386b4fd9f9096df28f71e"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/debug_compare.rs",
+      "sha256": "069001ee28e55533c921a20bbca60a449e0e1c64aa9ce6b1c1ae4b6c9d5693e5"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/filming.rs",
+      "sha256": "dd84ea9a205eebfc78dbf929795e7a0da6e48a777a8f8f9ddebf2364d2640611"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/mod.rs",
+      "sha256": "b082497039902167214a2c7359e1c2ece4fffeb9c6a735f70470ce70917e57b0"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/printing.rs",
+      "sha256": "9f18f68c3ea22a7c46d7152cd261797722175e6596df24f8d958b74a4039ae6b"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stages/scanning.rs",
+      "sha256": "56ece0042c5fe691f6c400995e6eefe8f3c5e63b1995d354edfbcace3d96999a"
+    },
+    {
+      "path": "crates/spektrafilm-core/src/stock_setup.rs",
+      "sha256": "e13b4f058673c9e67176a9c85cb99ff2cbf6c7a3fec5c703bdf3615a7f9cd459"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/calibrated_output_v1.rs",
+      "sha256": "859aaa4739cb905b0f100b1dafd263c9f9a33867748a63b5f7ce8bbed023d07c"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/fixtures/fpw_finish_v1.rs",
+      "sha256": "96dad0de5f534b2f607bc894cfd1a6708e8094d67e972eda10d92fb9125eacd1"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/fixtures/fpw_negative_scan_v1.rs",
+      "sha256": "f0bc02d01bf705a6a2595e1137fced2c8ad84087d8a1e17641054a00401529e6"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/fixtures/fpw_physical_output_v1.wgsl",
+      "sha256": "d5220ed250dc27a2812065415f92c9fd0edb4efa6144f418aa0cd4139e7e160d"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/gpu_output.rs",
+      "sha256": "37b0033e904292f2d002e31f8fe9e40eaf8b80ee91032b639fee9e1d59fa387d"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/negative_cache.rs",
+      "sha256": "e7a7142965d24633a2c657636f878a1cf3df5688b1cacbac64abb4703f02e5fa"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/probe_isolation.rs",
+      "sha256": "ef0d71ceb486b6542cb4adafa1223eed63e47f151c22d592795ea37a83b4b0c6"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/stock_setup.rs",
+      "sha256": "05bedda4de26838fbe2f0cb60457c15af84540824a598ad23f550907dbffe825"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/submission_gate.rs",
+      "sha256": "788518922991cf0e5639d5ee8536a40b2e382d2f4b4a6f0a2756dc7636af16e1"
+    },
+    {
+      "path": "crates/spektrafilm-core/tests/work_images.rs",
+      "sha256": "3770a7064f9cb44109b9a677a4036de50c632b33d23c9f2f49f5e6b547fc7e15"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/vulkan/grain_iir.comp",
+      "sha256": "3fca04e2b0498f769d7df1f29a020c5be49a4d1f7769f920e529df5a3f25d03e"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/vulkan/grain_iir.spv",
+      "sha256": "affd0c4135c9e081e5f997693897f64ba29323e52d4c4a0f76e372ddff6a7799"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/add_scaled.wgsl",
+      "sha256": "659224c70c2274948528875f7ce73b3f4ecb6b174eb9b4b0dea756fc20fee100"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/add_scaled_per_channel.wgsl",
+      "sha256": "43a1d6eef1bc1fb48f54ca35ba9bf7ecfcdbebc8185b00570aab97f68348a77d"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/density_curve_interp.wgsl",
+      "sha256": "a59e96534a9f62b0f4a42264265d0812790ad46c7e5ba0c2d6f9078186274e40"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/density_interp.wgsl",
+      "sha256": "607e0d636e19d6e7671d476eb98a44f784bc62d5ac91d783be2782df903412b2"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/dir_matmul.wgsl",
+      "sha256": "33d0ada55bf086ac41282f7da199385b76c27605a5b88bca20df6bc253df1065"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/downsample_area.wgsl",
+      "sha256": "a99ad62c19f6f26b2ac8ac23433b73c8b289669f2a526e4947997232b2bba273"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/film_display.wgsl",
+      "sha256": "0ba513871392cf167404a930c87bdef7f435b41c8599480b5c63fc661dc136bf"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/film_quantize.wgsl",
+      "sha256": "330446b71a5c40add136dc55f894484fa1b693f6b4165249d315d7d1b819177d"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/gamut_compress.wgsl",
+      "sha256": "a8f17d3d82371af424442190ef59bac76c4d4f33fe5602f84fb88caf1e121e1f"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/gaussian_blur_h.wgsl",
+      "sha256": "5314dfe5899c14aee2c7d22f556faea3798715b43b1de1f6705c67d6f64391f9"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/gaussian_blur_v.wgsl",
+      "sha256": "d54b9020806a5a9cae650425e65e2cb2e9f0f2bda877e6435fc783b834ed13e8"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/glare_apply.wgsl",
+      "sha256": "63bf3ae796a2281efda36f453ce6bdf3d41debc4d26390604c4aeed1f2c0646e"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/glare_gen.wgsl",
+      "sha256": "fe2451edf216a63b96d05506f1a9f75716c01b1854324f6ca473a1358b64e4c7"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/grain.wgsl",
+      "sha256": "bd48b90233e3119bf8c98629ea3be2f89e044864867c1eb6fe88d16d9e994133"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/grain_layers.wgsl",
+      "sha256": "367c57a7f24a38a190088fbc2c5801202d1a45467d5bd60e3297f4d061e6c369"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/grain_reference.wgsl",
+      "sha256": "9cdf8e9810f486188099d2fe7a932259c56f4f8c7032abe6bedd727f3ed9ae08"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/halation_renormalize.wgsl",
+      "sha256": "362a7eec76c87ccc3f78b026819a18a7338be7488c7767196ca348b3ba2e51ab"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/hanatos2025_rgb_to_raw.wgsl",
+      "sha256": "52d86562ac400f6e8187727fa6076fba3489e004afb3cbfdf0ad36e3fcbeecc0"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/highlight_boost.wgsl",
+      "sha256": "c66dbf1df820c89b747d25fabba568815ea4554a67421321aab008968b3d90e6"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/linear_to_log10_outer.wgsl",
+      "sha256": "dfad6911d411e43395915b686eacfa7722dedbdf65efa4281c26c2eff71033c9"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/log10_inplace.wgsl",
+      "sha256": "69157a9f67261a80b4047bed6e1332ad29f649555eb1877d23c0e9a03217090e"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/log_to_linear_scaled.wgsl",
+      "sha256": "fced08cdc2e842383e4caab5320f0b8dec5e37bb7557531fce9d2284d6be04b3"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/mallett_rgb_to_raw.wgsl",
+      "sha256": "7a984fe25d2bd052e7124c4b8ade757c0fa3c061689de6674e033e1f507194d0"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/max_reduce.wgsl",
+      "sha256": "420ff0315d37354c89b0b609646e46be3cf9d2ec8883fa37c75f5021dc48f2ef"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/physical_output_v1.wgsl",
+      "sha256": "d5220ed250dc27a2812065415f92c9fd0edb4efa6144f418aa0cd4139e7e160d"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/post_scan.wgsl",
+      "sha256": "19bc147bc7fe4623083fbc688e9a0ff16c869ecfdbf430a60031171df09d3a7f"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/print_spectral.wgsl",
+      "sha256": "b6ce226e216b82530db3cb8518b892fb59fa38a1692adf66557633fd20d0f1a8"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/scan_spectral.wgsl",
+      "sha256": "1e2115d5e17f2f15256d3dc9bc0babcec54124cdbafc324d0e8fc962531c4625"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/scatter_mix.wgsl",
+      "sha256": "a93da57e12ab9c3518ee3151cdfff63cc8601ce8917d702b9cc6c88b5f6e354c"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/unsharp_combine.wgsl",
+      "sha256": "fb82bb4e6272f30786646e54340c9de65adc3aff7a81c5936934d112a564b735"
+    },
+    {
+      "path": "crates/spektrafilm-shaders/wgsl/upsample_bilinear.wgsl",
+      "sha256": "fbcae9597afadc90f283a19241f4336689c00bfffd47e3b8fa853ff9c8c94bf2"
+    }
+  ]
+}
