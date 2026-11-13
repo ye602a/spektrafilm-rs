@@ -26,3 +26,6 @@ jobs:
 
       - name: Check and exercise host device boundary
         run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
+
+      - name: Test CPU reference math and film-model crates
+        run: cargo test --locked -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core --lib
