@@ -1,5 +1,8 @@
 pub mod cpu_backend;
 pub mod output;
+pub use output::{DisplayRegion, OutputError, Rgb16Image};
+#[cfg(feature = "wgpu-backend")]
+pub use output::FilmOutput;
 mod render;
 pub use render::{FilmRenderOptions, SourceIdentity};
 #[cfg(feature = "wgpu-backend")]

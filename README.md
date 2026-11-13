@@ -2,32 +2,57 @@
 
 ![banner](docs/card.jpg)
 
-A Rust port of [andreavolpato/spektrafilm](https://github.com/andreavolpato/spektrafilm) — a spectral simulator for analogue colour film and the print-and-scan chain.
+A separately maintained film engine for **FPW**, based on the Rust port by
+[turbasvin/spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs) of
+[Andrea Volpato's spektrafilm](https://github.com/andreavolpato/spektrafilm).
+It simulates analogue colour film and the print-and-scan chain.
 
-The same spectral integration the original Python project does (RGB → film dye density → enlarger illuminant → print paper → scanner RGB), reimplemented in Rust with a GPU preview and a parity-faithful CPU export. The point of the port is **bit-identical output to the Python reference** at f64 precision while running in a fraction of the wall time.
+FPW is the primary integration and acceptance target. This repository owns the
+film/print/scanner algorithms, physical grain, GPU execution and engine caches;
+FPW owns RAW preparation, recipes, masks, application scheduling, undo, UI and
+file delivery. Engine changes are developed here and adopted by FPW through a
+reviewed revision pin and matching resource identity. Standalone CLI and GUI
+builds remain available without the FPW repository or a signed-in service.
+
+FPW's production dependency is still its accepted vendor revision. Public RS
+builds and synthetic tests do not by themselves authorize changing that pin.
+The [host contract](docs/maintenance/HOST_GPU_INTEGRATION_CONTRACT.md),
+[FPW integration plan](docs/maintenance/FPW_PARITY_MIGRATION_PLAN.md) and
+[public host example](crates/spektrafilm-core/examples/fpw_host_contract.rs)
+describe implemented interfaces and remaining acceptance work. Wide-gamut
+working-space changes remain separate research.
+
+Numerical compatibility is qualified per route, precision, input and device.
+The historical Python comparison below is not a blanket claim of bit-identical
+output for stochastic effects, the current GPU backend, or every FPW route.
 
 ---
 
 ## What it does
 
 - **Spectral pipeline.** Hanatos2025 RGB→raw spectral upsampling, full 81-wavelength film/print/scanner spectral integration, density-curve interpolation, halation, DIR couplers, grain (bit-exact numpy `MT19937` port), glare, output CCTF encoding.
-- **Live interactive preview** on the GPU (wgpu / Metal on macOS) — slider drags update at 60 fps on a 6 MP working image.
-- **Reference-quality export** on the CPU at f64 — verified bit-identical to the Python reference for the bare chain (max diff 1/255 from 8-bit quantisation, mean 0.00004).
+- **GPU film processing** on the pinned wgpu 30 Vulkan backend, including source-anchored multilayer grain, precise IIR, bounded work-plane/density reuse and scoped same-device output. Frame time depends on image size, effects, cache state and hardware; no current 60 fps guarantee is made.
+- **f64 CPU reference/export** and f32 GPU paths, with explicit numerical comparisons and different precision contracts.
 - **Decoupled preview + export.** GUI uses f32 GPU for iteration, then shells out to the f64 CPU binary for the final write. The export runs in a worker thread with a cancel button and proper child-process lifecycle.
 - **Profiles bundled.** 30+ film and paper profiles in `data/profiles/` — Kodak Gold/Portra/Ektar, Fuji Velvia/Provia, Kodak Endura papers, Fuji Crystal Archive papers.
 
 ## Build
 
-Requires Rust stable (≥ 1.80) and the standard system toolchain.
+Requires Rust **1.99 or newer** (edition 2024), the standard system toolchain,
+and Vulkan support for the current GPU backend. The lockfile pins wgpu 30.0.1
+and eframe/egui 0.37.0. The current GPU configuration enables Vulkan, not Metal;
+the historical upstream macOS measurements below do not establish support for
+this fork's current GPU build.
 
 ```bash
-git clone <this-repo> && cd spektrafilm-rs
+git clone https://github.com/ye602a/spektrafilm-rs.git
+cd spektrafilm-rs
 
-# GUI (wgpu/Metal preview, eframe)
-cargo build --release -p spektrafilm-gui
+# GUI (wgpu/Vulkan preview, eframe)
+cargo build --locked --release -p spektrafilm-gui
 
 # f32 CLI — fast batch processor, defaults to GPU backend
-cargo build --release -p spektrafilm-cli
+cargo build --locked --release -p spektrafilm-cli
 
 # f32 CLI with experimental native CUDA backend option
 cargo build --release -p spektrafilm-cli --features spektrafilm-gpu/cuda-backend
@@ -85,9 +110,20 @@ SPEKTRAFILM_BACKEND=cpu \
 ./target/release/spektrafilm list-profiles --data-dir data
 ```
 
-## Parity
+## Validation and historical Python comparison
 
-Verified against the upstream Python `spektrafilm` v0.3.2 reference on the bare-chain (no stochastic FX):
+Current validation runs in `.github/workflows/standalone-engine-smoke.yml`:
+Windows builds the independent applications/API and CPU contracts; Linux uses
+required software Vulkan to execute physical-chain, ownership, source-coordinate,
+IIR, density-cache and output tests. GPU absence is a failure in that Linux job.
+Dedicated hardware, frozen FPW photos and real host interaction/recovery remain
+separate gates. The actual completed migration checks are recorded in
+[GPU_MIGRATION_VALIDATION_20261113.md](docs/maintenance/GPU_MIGRATION_VALIDATION_20261113.md)
+and the [FPW coupling record](docs/maintenance/FPW_ENGINE_COUPLING_20261113.md).
+
+The upstream Rust port reported the following comparison with Python
+`spektrafilm` v0.3.2 on the bare chain (no stochastic FX). These are retained
+historical results, not a new measurement of this fork:
 
 | Stage | Max diff | Mean diff | Identical pixels |
 |---|---|---|---|
@@ -100,7 +136,12 @@ With grain on, the binomial sampler's rejection step is sensitive to upstream UL
 
 The LUT path (`use_enlarger_lut` + `use_scanner_lut`, the typical export config) uses a bit-exact port of Python's PCHIP 3D interpolation (`crates/spektrafilm-math/src/pchip3d.rs` ↔ `spektrafilm/utils/fast_interp_lut.py`). Parity numbers above hold for both the LUT and non-LUT paths.
 
-## Performance
+## Historical upstream performance
+
+The following CPU and Apple Silicon numbers are retained from the upstream Rust
+port. They have not been reproduced for this fork's current Windows/Vulkan FPW
+integration. Cache reuse alone does not establish a measured speedup; compare
+matching inputs, effects, hardware and cold/warm state before making one.
 
 f64 CPU export on a 16 MP Olympus ORF (kodak_gold_200 → kodak_portra_endura, full FX):
 
@@ -128,17 +169,23 @@ crates/
   spektrafilm-gpu/     ComputeBackend trait + CPU (rayon + BLAS) and wgpu backends
   spektrafilm-shaders/ WGSL / Metal / CUDA compute shaders
   spektrafilm-cli/     `spektrafilm` (process, list-profiles, gen-lut) + `decode_raw_gui`
-  spektrafilm-gui/     egui/eframe preview (wgpu renderer, Metal-backed on macOS)
+  spektrafilm-gui/     egui/eframe standalone preview (current wgpu/Vulkan build)
 data/
   profiles/            film + paper JSON profiles (spectral sensitivities, density curves, etc.)
   luts/                Hanatos2025 spectral basis + standard observer CMFs (.npy)
   filters/             neutral-print enlarger filter database
 scripts/parity/        Python ↔ Rust comparison harness (spektra_compare.py, etc.)
 tests/                 reference outputs + integration test fixtures
-docs/upstream-sync.md  porting status of upstream 0.3.4 colour features + backlog
+docs/maintenance/     FPW integration contracts, provenance and validation evidence
 ```
 
 ## Credits
+
+The original Rust port is by [turbasvin/spektrafilm-rs](https://github.com/turbasvin/spektrafilm-rs).
+This fork adds the FPW integration and the engine migrations documented under
+`docs/maintenance/`; those changes do not replace the original attribution.
+The multilayer grain and precise Vulkan IIR migration also retains the pinned
+SpektraLab attribution in [GRAIN_MULTILAYER_MIGRATION.md](docs/maintenance/GRAIN_MULTILAYER_MIGRATION.md).
 
 Original Python implementation by Andrea Volpato — [andreavolpato/spektrafilm](https://github.com/andreavolpato/spektrafilm). All spectral data, film/paper profiles, and pipeline architecture come from there. This port owes its existence to Andrea and its work.
 
@@ -150,4 +197,9 @@ Claude code for being this awesome.
 
 ## License
 
-GPL-3.0, matching the upstream Python project. See [LICENSE](LICENSE) for the full text.
+Code is GPL-3.0, matching the upstream Rust/Python project. See [LICENSE](LICENSE).
+Profiles, LUTs and their direct derivatives have their own upstream attribution
+and CC BY-SA 4.0 terms in [SPEKTRAFILM_DATA_LICENSE.txt](SPEKTRAFILM_DATA_LICENSE.txt).
+The frozen negative-scan calibration keeps its source identities and changes in
+`data/negative_scan_ap0_v1/`; do not treat the code license as a replacement for
+the data license. No private photographs or FPW application assets are bundled.

@@ -171,6 +171,7 @@ impl Default for WorkImageCache {
 pub struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
+    submission_lock: Option<std::sync::Arc<std::sync::Mutex<()>>>,
     grain_reference: Option<GrainReference>,
     work_images: std::sync::Mutex<WorkImageCache>,
     negative_cache: std::sync::Mutex<NegativeCache<wgpu::Buffer>>,
@@ -282,19 +283,60 @@ impl WgpuBackend {
     /// The caller MUST pass a queue obtained alongside this device; mismatched
     /// device/queue pairs are invalid. The host is also responsible for
     /// synchronizing queue submissions with surface reconfiguration or other
-    /// externally coordinated GPU operations. This constructor does not manage
-    /// the host's frame lifecycle or any application-specific cache identity.
+    /// externally coordinated GPU operations. Hosts with a shared submission
+    /// gate can use `from_device_with_submission_lock` instead. This constructor
+    /// does not manage the host's frame lifecycle or cache identity.
     ///
     /// The backend's compiled-pipeline cache is owned by this instance.
     pub fn from_device(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+        Self::from_device_with_submission_lock(device, queue, None)
+    }
+
+    /// Wrap host-owned handles and an optional short queue-submission gate.
+    ///
+    /// The host can use the same mutex around surface reconfiguration and its
+    /// own submissions. The engine holds it only inside `queue.submit`: input
+    /// preparation, output consumers, GPU completion waits, and readback run
+    /// outside the gate. Do not hold the mutex while calling a render method.
+    ///
+    /// A resident render rechecks its cancellation flag after obtaining the
+    /// mutex, so cancellation while blocked prevents that command submission.
+    /// This constructor never creates another device or queue; all requirements
+    /// of `from_device` still apply. Passing None preserves its behavior.
+    pub fn from_device_with_submission_lock(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        submission_lock: Option<std::sync::Arc<std::sync::Mutex<()>>>,
+    ) -> Self {
         Self {
             device,
             queue,
+            submission_lock,
             grain_reference: None,
             work_images: std::sync::Mutex::new(WorkImageCache::default()),
             negative_cache: std::sync::Mutex::new(NegativeCache::default()),
             pipeline_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    fn submit(
+        &self,
+        commands: impl IntoIterator<Item = wgpu::CommandBuffer>,
+    ) -> wgpu::SubmissionIndex {
+        self.submit_with_options(commands, FilmRenderOptions::default())
+            .expect("legacy submission has no cancellation flag")
+    }
+
+    fn submit_with_options(
+        &self,
+        commands: impl IntoIterator<Item = wgpu::CommandBuffer>,
+        options: FilmRenderOptions<'_>,
+    ) -> Result<wgpu::SubmissionIndex, OutputError> {
+        let _submission = self.submission_lock.as_ref().map(|lock| lock.lock().unwrap());
+        // This check belongs after acquisition: a host may have cancelled the
+        // request while surface reconfiguration kept the submission waiting.
+        options.check_cancelled()?;
+        Ok(self.queue.submit(commands))
     }
 
     /// Optional map from rendering coordinates to original photo coordinates.
@@ -552,7 +594,7 @@ impl WgpuBackend {
             pass.dispatch_workgroups(num_workgroups, 1, 1);
         }
         encoder.copy_buffer_to_buffer(&gpu_buffers[output_idx], 0, &readback, 0, output_size);
-        self.queue.submit(Some(encoder.finish()));
+        self.submit(Some(encoder.finish()));
 
         // Read back
         let slice = readback.slice(..);
@@ -734,7 +776,7 @@ impl WgpuBackend {
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
         encoder.copy_buffer_to_buffer(&buf_out, 0, &readback, 0, img_bytes as u64);
-        self.queue.submit(Some(encoder.finish()));
+        self.submit(Some(encoder.finish()));
 
         let slice = readback.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -961,7 +1003,7 @@ impl WgpuBackend {
         // `per_sigma` and `bufs_out` are alive until the function returns,
         // which is after `queue.submit()` — so all referenced buffers stay
         // valid for the encoded work.
-        self.queue.submit(Some(encoder.finish()));
+        self.submit(Some(encoder.finish()));
 
         // Map every readback, then poll once.
         for rb in &readbacks {
@@ -1048,11 +1090,19 @@ impl WgpuBackend {
         let n_pixels = channels / 3;
         let img_bytes = n_pixels as usize * 3 * 4;
 
-        let cache_enabled = self.negative_cache.lock().unwrap().enabled();
-        let negative_key = options.source.filter(|_| cache_enabled).map(|source| {
-            NegativeKey::new(p, source, self.grain_reference.as_ref())
-        });
-        let lookup = self.negative_cache.lock().unwrap().begin(negative_key, img_bytes as u64);
+        // Synthetic probes use this same device and compiled pipelines, but
+        // never touch a photo's retained density or its publication ticket.
+        // Keeping this decision on the invocation also permits nested probes
+        // and overlapping photo renders without a shared enable/restore scope.
+        let lookup = if options.isolate_photo_caches {
+            NegativeLookup::Bypass
+        } else {
+            let cache_enabled = self.negative_cache.lock().unwrap().enabled();
+            let negative_key = options.source.filter(|_| cache_enabled).map(|source| {
+                NegativeKey::new(p, source, self.grain_reference.as_ref())
+            });
+            self.negative_cache.lock().unwrap().begin(negative_key, img_bytes as u64)
+        };
         let (negative_hit, negative_publication) = match lookup {
             NegativeLookup::Bypass => (None, None),
             NegativeLookup::Hit(buffer) => (Some(buffer), None),
@@ -1082,8 +1132,15 @@ impl WgpuBackend {
             .device
             .features()
             .contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS);
-        let (work_pair, work_generation) =
-            self.checkout_work_images(img_bytes as u64, mappable);
+        // A probe owns private planes for its entire lifetime. In particular,
+        // it must not check out an idle photo pair even at identical geometry,
+        // or evict that pair when the synthetic ramp has a different size.
+        let (work_pair, work_generation) = if options.isolate_photo_caches {
+            (None, None)
+        } else {
+            let (pair, generation) = self.checkout_work_images(img_bytes as u64, mappable);
+            (pair, Some(generation))
+        };
 
         // buf_a is the input/ping-pong buffer. The dominant per-frame cost was
         // the input upload: `queue.write_buffer` stages CPU→GPU through a slow
@@ -1943,7 +2000,7 @@ impl WgpuBackend {
         })?;
         options.check_cancelled()?;
         let cpu_setup_ms = t_start.elapsed().as_secs_f32() * 1000.0;
-        let submitted = self.queue.submit(Some(encoder.finish()));
+        let submitted = self.submit_with_options(Some(encoder.finish()), options)?;
         self.device.poll(wgpu::PollType::Wait {
             submission_index: Some(submitted), timeout: None,
         }).map_err(|_| OutputError::GpuFailure)?;
@@ -1957,7 +2014,9 @@ impl WgpuBackend {
             self.negative_cache.lock().unwrap().publish(publication, snapshot, img_bytes as u64);
         }
         // GPU consumers and any requested readback have finished before reuse.
-        self.release_work_images(buf_a, buf_b, work_generation, mappable);
+        if let Some(generation) = work_generation {
+            self.release_work_images(buf_a, buf_b, generation, mappable);
+        }
         tracing::debug!(
             cpu_setup_ms = format!("{cpu_setup_ms:.1}"),
             gpu_wait_ms = format!("{gpu_wait_ms:.1}"),

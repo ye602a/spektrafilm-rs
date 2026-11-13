@@ -1,3 +1,4 @@
+pub mod calibrated_output_v1;
 pub mod color_reference;
 pub mod data;
 pub mod enlarger;
@@ -11,3 +12,4 @@ pub mod print_morph;
 pub mod profile;
 pub mod spectral_service;
 pub mod stages;
+pub mod stock_setup;
