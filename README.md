@@ -1,4 +1,8 @@
+![spektrafilm-rs](docs/card.jpg)
+
 # spektrafilm-rs
+
+**English** | [简体中文](README.zh-CN.md)
 
 A Rust engine for physically based film, print and scan simulation, with spectral
 processing and GPU acceleration. Based on the Rust port by
