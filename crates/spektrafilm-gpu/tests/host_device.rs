@@ -20,17 +20,18 @@ fn host_can_request_the_engines_device_requirements() {
     let _descriptor: fn(&wgpu::Adapter) -> wgpu::DeviceDescriptor<'static> =
         WgpuBackend::device_descriptor;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::PRIMARY,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let Some(adapter) = pollster::block_on(instance.request_adapter(
         &wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,
             force_fallback_adapter: false,
+            ..Default::default()
         },
-    )) else {
+    )).ok() else {
         eprintln!("SKIP: no compatible adapter for descriptor test");
         return;
     };
@@ -79,5 +80,5 @@ fn host_handles_are_reused_without_allocating_a_second_device() {
     });
     encoder.clear_buffer(&buffer, 0, None);
     queue.submit([encoder.finish()]);
-    device.poll(wgpu::Maintain::Wait);
+    device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).expect("GPU work completion");
 }
