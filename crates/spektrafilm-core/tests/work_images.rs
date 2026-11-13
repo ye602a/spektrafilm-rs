@@ -27,6 +27,15 @@ fn require_backend() -> Option<WgpuBackend> {
 
 #[test]
 fn gpu_work_planes_do_not_change_film_pixels_or_leak_between_photos() {
+    verify_work_planes(false);
+}
+
+#[test]
+fn gpu_work_planes_preserve_multilayer_grain_pixels() {
+    verify_work_planes(true);
+}
+
+fn verify_work_planes(multilayer: bool) {
     let Some(backend) = require_backend() else { return };
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     path.pop();
@@ -35,7 +44,7 @@ fn gpu_work_planes_do_not_change_film_pixels_or_leak_between_photos() {
     let film = profile::load_profile_by_name(&path, "kodak_portra_400").unwrap();
     let paper = profile::load_profile_by_name(&path, "kodak_portra_endura").unwrap();
     let mut params = RuntimeParams::default();
-    params.film_render.grain.gpu_multilayer = false;
+    params.film_render.grain.gpu_multilayer = multilayer;
     let pipeline = Pipeline::new_with_spectral(film, paper, params, &path)
         .expect("real film pipeline fixture required");
 
@@ -56,12 +65,23 @@ fn gpu_work_planes_do_not_change_film_pixels_or_leak_between_photos() {
     let pair_bytes = first.pixel_count() as u64 * 3 * 4 * 2;
     assert_eq!(backend.work_image_bytes(), pair_bytes);
 
-    let b = pipeline.process(other, &backend);
+    let b = pipeline.process(other.clone(), &backend);
     assert_eq!(oracle_other.data, b.data, "second image must not inherit old pixels");
     assert_eq!(backend.work_image_bytes(), pair_bytes);
 
-    let again = pipeline.process(first, &backend);
+    let again = pipeline.process(first.clone(), &backend);
     assert_eq!(oracle_first.data, again.data, "returning to first image must reproduce");
+    assert_eq!(backend.work_image_bytes(), pair_bytes);
+
+    // Overlap complete film renders on one backend. Each must retain its own
+    // pixels even when the other render checks out or returns a work pair.
+    let (left, right) = std::thread::scope(|scope| {
+        let left = scope.spawn(|| pipeline.process(first, &backend));
+        let right = scope.spawn(|| pipeline.process(other, &backend));
+        (left.join().unwrap(), right.join().unwrap())
+    });
+    assert_eq!(oracle_first.data, left.data);
+    assert_eq!(oracle_other.data, right.data);
     assert_eq!(backend.work_image_bytes(), pair_bytes);
 
     let next = pipeline.process(resized.clone(), &backend);

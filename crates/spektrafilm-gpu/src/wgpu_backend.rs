@@ -4,6 +4,9 @@ mod layered_grain;
 #[cfg(feature = "wgpu-backend")]
 #[path = "grain_iir.rs"]
 mod grain_iir;
+#[cfg(all(test, feature = "wgpu-backend"))]
+#[path = "work_image_tests.rs"]
+mod work_image_tests;
 
 /// wgpu compute backend — dispatches WGSL shaders on GPU via Metal/Vulkan/DX12.
 

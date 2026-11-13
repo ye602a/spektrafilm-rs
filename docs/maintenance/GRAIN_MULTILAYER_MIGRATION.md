@@ -1,11 +1,13 @@
 # RS physical multilayer GPU grain migration
 
 Date: 2026-11-13
-Status: ported to independent RS candidate branch, awaiting standalone CI and frozen FPW image parity before host cutover.
+Status: merged into independent RS main by [PR #6](https://github.com/ye602a/spektrafilm-rs/pull/6), commit `c487cb3a724ae7f6c05d8eac45c86d3394859eda`. Windows compile/CPU and Linux software-Vulkan smoke passed; full IIR hardware qualification and frozen FPW image parity remain pending.
 
 ## Source and scope
 
-The original FPW-vendored engine (FPW main ae3428acd98e39c48784a79dc8f3369ab1236cb1) is the reference for this migration, including GPL-3.0-attributed SpektraLab algorithm 99c2d5c9883be485085895157279cc7c4eaa8db6. The staged port includes GPU Philox/Poisson thinning, layer density curves, dye clouds, microstructure, source-coordinate sampling and the verified original NoContraction Vulkan SPIR-V recursive IIR. No FPW application, private photo asset or upstream data/model resource is moved.
+The original FPW-vendored engine (FPW main ae3428acd98e39c48784a79dc8f3369ab1236cb1) is the reference for this migration, including GPL-3.0-attributed SpektraLab algorithm 99c2d5c9883be485085895157279cc7c4eaa8db6. The merged port includes GPU Philox/Poisson thinning, layer density curves, dye clouds, microstructure, source-coordinate sampling and the original NoContraction Vulkan SPIR-V recursive IIR. No FPW application, private photo asset or upstream data/model resource is moved.
+
+Source comparison at RS `e57d0d1a33dadb2fd647201f49e497c14c1d7a9e` confirmed identical Git blobs for `grain_layers.rs`, `layered_grain.rs`, `grain_layers.wgsl`, `grain_iir.comp` and `grain_iir.spv`. In particular, the copied SPIR-V blob is `e23544d20d7f402a70b7005fb7531721793870e3`. The IIR Rust wrapper differs only by adding the explicit ignore annotation and hardware-qualification comment to its long precision test; the source-coordinate helper differs only in its introductory comment.
 
 ## Opt-in compatibility
 
@@ -13,7 +15,17 @@ The original FPW-vendored engine (FPW main ae3428acd98e39c48784a79dc8f3369ab1236
 
 With wide-sigma grain (>=3 pixels), the original precise Vulkan SPIR-V path must be used. `WgpuBackend::device_descriptor` requests `PASSTHROUGH_SHADERS` on capable Vulkan adapters. Host-injected devices must request the same feature when using wide IIR; unsupported Metal/DX12 devices must not silently switch to a visually different approximation. Narrow FIR and the pre-existing simple sampler continue unchanged.
 
-## Regression requirements
+## Verified standalone results and remaining gates
+
+[PR validation 43397365918](https://github.com/ye602a/spektrafilm-rs/actions/runs/43397365918) and [merged-main validation 43398567694](https://github.com/ye602a/spektrafilm-rs/actions/runs/43398567694) passed. Windows checked the independent crates, CLI and GUI, compiled GPU tests, and ran 72 CPU math/model/core tests. Linux used `llvmpipe (LLVM 20.1.2, 256 bits)` for actual Vulkan submission and ran source-coordinate and multilayer tests without skipping the required GPU path.
+
+The RS Linux run measured multilayer mean `1.5006471944243458`, variance `0.020058962077850902`, and analytic variance `0.01997501919166667`. It also tested repeated state use/accumulator clearing, changed seeds, sampling amount/scale, dye clouds, microstructure, and limited mixed FIR/IIR channel execution. These are new RS software-Vulkan results, not an NVIDIA/AMD hardware qualification.
+
+`actual_gpu_iir_matches_f64_reference` is marked `#[ignore]`; the above CI runs did **not** execute its complete 1,215 cases. Limited wide-blur execution and lower variance do not establish that precision contract. The six frozen FPW images have also **not** been replayed against RS. PR #7 separately develops allocation reuse and remains under validation; it does not complete either of these image/hardware gates.
+
+A resumed RS validation on 2026-11-13 explicitly ran all **1,215** IIR cases on Mesa llvmpipe (Debian Mesa 25.0.7, LLVM 19). All passed with maximum absolute error `1.1920928955078125e-7`. The standalone workflow now explicitly runs this suite with `--ignored` on Linux software Vulkan. This is independent RS numerical evidence; the dedicated RTX/AMD and six-photo host gates remain pending.
+
+## Reproduction and qualification commands
 
 ```sh
 cargo check --locked -p spektrafilm-core -p spektrafilm-gpu --all-targets
