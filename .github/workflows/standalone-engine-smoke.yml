@@ -52,3 +52,6 @@ jobs:
 
       - name: Require a real Vulkan device and submit GPU work
         run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
+
+      - name: Verify actual source-anchored physical grain on Vulkan
+        run: cargo test --locked -p spektrafilm-gpu --test grain_source -- --nocapture
