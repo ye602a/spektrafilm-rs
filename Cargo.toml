@@ -13,7 +13,7 @@ members = [
 version = "0.1.2"
 edition = "2024"
 license = "GPL-3.0"
-rust-version = "1.85"
+rust-version = "1.99"
 
 [workspace.dependencies]
 spektrafilm-core = { path = "crates/spektrafilm-core" }
@@ -28,7 +28,7 @@ rand = "0.9"
 rand_distr = "0.5"
 image = { version = "0.25", default-features = false, features = ["tiff", "png", "jpeg"] }
 exr = "1.73"
-wgpu = "24"
+wgpu = { version = "=30.0.1", default-features = false, features = ["std", "wgsl", "vulkan"] }
 clap = { version = "4", features = ["derive"] }
 eframe = { version = "0.31", default-features = false, features = ["wgpu", "glow", "default_fonts", "wayland", "x11"] }
 egui = "0.31"
