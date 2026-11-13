@@ -16,6 +16,42 @@ fn host_device_constructor_and_handle_accessor_are_public() {
 }
 
 #[test]
+fn host_can_request_the_engines_device_requirements() {
+    let _descriptor: fn(&wgpu::Adapter) -> wgpu::DeviceDescriptor<'static> =
+        WgpuBackend::device_descriptor;
+
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::PRIMARY,
+        ..Default::default()
+    });
+    let Some(adapter) = pollster::block_on(instance.request_adapter(
+        &wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        },
+    )) else {
+        eprintln!("SKIP: no compatible adapter for descriptor test");
+        return;
+    };
+    let descriptor = WgpuBackend::device_descriptor(&adapter);
+    let adapter_limits = adapter.limits();
+    assert_eq!(
+        descriptor.required_limits.max_storage_buffer_binding_size,
+        adapter_limits.max_storage_buffer_binding_size
+    );
+    assert_eq!(
+        descriptor.required_limits.max_buffer_size,
+        adapter_limits.max_buffer_size
+    );
+    assert_eq!(
+        descriptor.required_limits.max_compute_invocations_per_workgroup,
+        adapter_limits.max_compute_invocations_per_workgroup
+    );
+    assert!(adapter.features().contains(descriptor.required_features));
+}
+
+#[test]
 fn host_handles_are_reused_without_allocating_a_second_device() {
     // Headless CI runners may not expose a compute adapter. In that case
     // the compile-time API test above still checks the interface.
