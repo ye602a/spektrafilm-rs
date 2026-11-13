@@ -48,8 +48,13 @@ jobs:
       - name: Test CPU reference math and film-model crates
         run: cargo test --locked -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core --lib
 
-      - name: Compile image-reuse end-to-end GPU regression
-        run: cargo test --locked -p spektrafilm-core --test work_images --no-run
+      - name: Compile full-chain cache and output regressions
+        run: cargo test --locked -p spektrafilm-core -p spektrafilm-gpu --tests --no-run
+
+      - name: Verify engine-owned dependency keys and output geometry
+        run: |
+          cargo test --locked -p spektrafilm-gpu --lib negative_cache
+          cargo test --locked -p spektrafilm-gpu --lib output::tests
 
   linux-vulkan-software:
     name: Linux Vulkan software compute smoke
@@ -89,3 +94,8 @@ jobs:
 
       - name: Qualify precise IIR against all 1215 f64 reference cases on software Vulkan
         run: cargo test --locked -p spektrafilm-gpu --lib actual_gpu_iir_matches_f64_reference -- --ignored --nocapture
+
+      - name: Verify density invalidation and scoped RGB16-region output on Vulkan
+        run: |
+          cargo test --locked -p spektrafilm-gpu --test output_kernels -- --nocapture
+          cargo test --locked -p spektrafilm-core --test negative_cache --test gpu_output -- --nocapture

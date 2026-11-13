@@ -1,8 +1,18 @@
 pub mod cpu_backend;
+pub mod output;
+mod render;
+pub use render::{FilmRenderOptions, SourceIdentity};
+#[cfg(feature = "wgpu-backend")]
+mod negative_cache;
+#[cfg(feature = "wgpu-backend")]
+pub use negative_cache::NegativeCacheStats;
 #[cfg(feature = "cuda-backend")]
 pub mod cuda_backend;
 #[cfg(feature = "wgpu-backend")]
 pub mod wgpu_backend;
+/// The exact wgpu version of the host-device contract.
+#[cfg(feature = "wgpu-backend")]
+pub use wgpu;
 
 use spektrafilm_math::image::ImageBuf;
 
@@ -132,6 +142,19 @@ pub trait ComputeBackend: Send + Sync {
     /// always returns `None`; wgpu implements it.
     fn try_run_film_chain(&self, _params: &FilmChainParams<'_>) -> Option<ImageBuf> {
         None
+    }
+
+    /// Per-call identity/cancellation extension. Backends without density
+    /// caching retain their original rendering path and ignore source identity.
+    fn try_run_film_chain_with_options(
+        &self,
+        params: &FilmChainParams<'_>,
+        options: FilmRenderOptions<'_>,
+    ) -> Result<Option<ImageBuf>, output::OutputError> {
+        options.check_cancelled()?;
+        let result = self.try_run_film_chain(params);
+        options.check_cancelled()?;
+        Ok(result)
     }
 
     /// True when `try_run_film_chain` returns the same post-scan output that

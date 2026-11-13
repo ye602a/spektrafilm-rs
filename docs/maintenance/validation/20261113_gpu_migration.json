@@ -1,0 +1,143 @@
+{
+  "input_configuration_identical": true,
+  "all_byte_identical": true,
+  "case_count": 8,
+  "results": [
+    {
+      "case": "layered_direct_scan_wide_iir",
+      "byte_identical": true,
+      "baseline_bytes": 2652,
+      "candidate_bytes": 2652,
+      "baseline_sha256": "d2315782401e6dac1ff02f9c22843e81074b7ffe8390e9ff00c085ccf047c85f",
+      "candidate_sha256": "d2315782401e6dac1ff02f9c22843e81074b7ffe8390e9ff00c085ccf047c85f",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "layered_print_cloud_micro",
+      "byte_identical": true,
+      "baseline_bytes": 2964,
+      "candidate_bytes": 2964,
+      "baseline_sha256": "d46e6322303ce0be89fa8c6fd30bd7300f31232dcf7ea5e121b09ac925a5c702",
+      "candidate_sha256": "d46e6322303ce0be89fa8c6fd30bd7300f31232dcf7ea5e121b09ac925a5c702",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "layered_print_paper_scanner",
+      "byte_identical": true,
+      "baseline_bytes": 3780,
+      "candidate_bytes": 3780,
+      "baseline_sha256": "273ceebe147cd58baa74f7073c4e4f2f0f0b345858df7d69d983e5dec285bd17",
+      "candidate_sha256": "273ceebe147cd58baa74f7073c4e4f2f0f0b345858df7d69d983e5dec285bd17",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "layered_source_scaled_amount",
+      "byte_identical": true,
+      "baseline_bytes": 5700,
+      "candidate_bytes": 5700,
+      "baseline_sha256": "63451025e5de743dcd2c4bfc7c1c9628b19a36bbc74165ae6a795cab08169b85",
+      "candidate_sha256": "63451025e5de743dcd2c4bfc7c1c9628b19a36bbc74165ae6a795cab08169b85",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "legacy_direct_scan_linear",
+      "byte_identical": true,
+      "baseline_bytes": 2484,
+      "candidate_bytes": 2484,
+      "baseline_sha256": "2c1ee7736ba35c4ac30d9f14dffdd2c476474e98d56c44a812beba0a07a14e6e",
+      "candidate_sha256": "2c1ee7736ba35c4ac30d9f14dffdd2c476474e98d56c44a812beba0a07a14e6e",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "legacy_print",
+      "byte_identical": true,
+      "baseline_bytes": 2244,
+      "candidate_bytes": 2244,
+      "baseline_sha256": "0c1881399f07a0189d2a0b49492eb35a2ea446fd6df1b7f240cff44557705c7f",
+      "candidate_sha256": "0c1881399f07a0189d2a0b49492eb35a2ea446fd6df1b7f240cff44557705c7f",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "legacy_print_optics_dir",
+      "byte_identical": true,
+      "baseline_bytes": 3780,
+      "candidate_bytes": 3780,
+      "baseline_sha256": "d7a35166a59036b6b136eda46c8a6c6967cd1cc44915313fd1078e48fb7bf823",
+      "candidate_sha256": "d7a35166a59036b6b136eda46c8a6c6967cd1cc44915313fd1078e48fb7bf823",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    },
+    {
+      "case": "legacy_skinny_no_grain",
+      "byte_identical": true,
+      "baseline_bytes": 204,
+      "candidate_bytes": 204,
+      "baseline_sha256": "00e0ce59262d34e2cf88f0fef484b10acac4bb408aa417ede7e1141e0c315ba6",
+      "candidate_sha256": "00e0ce59262d34e2cf88f0fef484b10acac4bb408aa417ede7e1141e0c315ba6",
+      "changed_scalar_bits": 0,
+      "candidate_all_finite": true,
+      "max_absolute_error": 0.0
+    }
+  ],
+  "date": "2026-11-13",
+  "baseline_commit": "85eb835a0116b8ef77beb4952ae80272a21b0b8a",
+  "candidate_base_commit": "fdef88aa95a852a4c82ba58150ed23ae2bfe7436",
+  "candidate_description": "RS density-cache and scoped output implementation in this commit",
+  "fixture_scope": "Eight deterministic synthetic small images; not FPW frozen six photographs",
+  "environment": {
+    "os": "Debian 13",
+    "rustc": "1.100.0",
+    "wgpu": "30.0.1",
+    "backend": "Mesa llvmpipe Vulkan",
+    "mesa": "25.0.7",
+    "llvm": "19",
+    "required_gpu": true
+  },
+  "iir_qualification": {
+    "cases": 1215,
+    "max_absolute_error": 1.1920928955078125e-07,
+    "rule": "4*f32::EPSILON*max(1,abs(reference))",
+    "hardware_qualification": false,
+    "hosted_confirmation": "https://github.com/ye602a/spektrafilm-rs/actions/runs/43424836925"
+  },
+  "local_tests": {
+    "cpu_math_model_core": 72,
+    "gpu_lib_passed": 15,
+    "gpu_lib_ignored_iir_run_separately": 1,
+    "work_images_integration": 2,
+    "negative_cache_integration": 1,
+    "output_kernels": 2,
+    "output_full_chain": 4,
+    "rgb16_threshold_samples": 196617,
+    "geometry_tests_in_gpu_lib": 2
+  },
+  "remaining_gates": [
+    "Frozen six-photo FPW parity on the same driver/device",
+    "NVIDIA/AMD hardware qualification",
+    "FPW cancellation, undo, preview/export and device-recovery interactions",
+    "Controlled performance and memory measurements"
+  ],
+  "implementation_sha256": {
+    "crates/spektrafilm-core/src/pipeline.rs": "5bccf1645e31a3c4a5ec6e3df0d8b7392e866099f60bbad8e8284e25c49b69c2",
+    "crates/spektrafilm-gpu/src/wgpu_backend.rs": "e808b6cb628daa93ebe228e2d92a8585e3c7835f16176428035b0ec6cdb3d94e",
+    "crates/spektrafilm-gpu/src/negative_cache.rs": "531454c30ad8ecd6fd82820ba2f977b5a380837ebbcf23ad5c8c1671c9939dfe",
+    "crates/spektrafilm-gpu/src/film_output.rs": "90ce239b1908508ccd6a37260f1584d03c4c52efdc95afb9d9e21bb6fcd7973b",
+    "crates/spektrafilm-gpu/src/output.rs": "b7d36a4a8719607b2581e1e8423138706f9ae205cead92ea123d0e4b4bee5057",
+    "crates/spektrafilm-gpu/src/render.rs": "a173a02b7e3879c8150b9dfcc9c144feba2ac8404f89084a355906467f61819a",
+    "crates/spektrafilm-shaders/wgsl/film_display.wgsl": "0ba513871392cf167404a930c87bdef7f435b41c8599480b5c63fc661dc136bf",
+    "crates/spektrafilm-shaders/wgsl/film_quantize.wgsl": "330446b71a5c40add136dc55f894484fa1b693f6b4165249d315d7d1b819177d"
+  }
+}
