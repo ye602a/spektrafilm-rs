@@ -6,6 +6,13 @@
 
 use spektrafilm_gpu::wgpu_backend::WgpuBackend;
 
+fn skip_or_fail_if_gpu_required(reason: &str) {
+    if std::env::var_os("SPEKTRAFILM_REQUIRE_GPU").is_some() {
+        panic!("{reason}");
+    }
+    eprintln!("SKIP: {reason}");
+}
+
 #[test]
 fn host_device_constructor_and_handle_accessor_are_public() {
     // This compile-time check works even when the machine has no GPU.
@@ -32,9 +39,17 @@ fn host_can_request_the_engines_device_requirements() {
             ..Default::default()
         },
     )).ok() else {
-        eprintln!("SKIP: no compatible adapter for descriptor test");
+        skip_or_fail_if_gpu_required("no compatible adapter for descriptor test");
         return;
     };
+    if std::env::var_os("SPEKTRAFILM_REQUIRE_GPU").is_some() {
+        assert_eq!(
+            adapter.get_info().backend,
+            wgpu::Backend::Vulkan,
+            "CI-required adapter must use the Vulkan backend"
+        );
+        eprintln!("VULKAN_ADAPTER: {}", adapter.get_info().name);
+    }
     let descriptor = WgpuBackend::device_descriptor(&adapter);
     let adapter_limits = adapter.limits();
     assert_eq!(
@@ -57,7 +72,7 @@ fn host_handles_are_reused_without_allocating_a_second_device() {
     // Headless CI runners may not expose a compute adapter. In that case
     // the compile-time API test above still checks the interface.
     let Some(host) = WgpuBackend::new() else {
-        eprintln!("SKIP: no compatible GPU adapter was available");
+        skip_or_fail_if_gpu_required("no compatible GPU adapter was available");
         return;
     };
     let (host_device, host_queue) = host.compute_device();
