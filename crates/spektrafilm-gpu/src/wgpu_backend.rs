@@ -23,8 +23,8 @@ use spektrafilm_math::image::ImageBuf;
 use crate::{ComputeBackend, Lut3D, cpu_backend};
 #[cfg(feature = "wgpu-backend")]
 use crate::{
-    FilmRenderOptions, NegativeCacheStats,
-    negative_cache::{NegativeCache, NegativeKey, NegativeLookup},
+    FilmRenderOptions, FilmSubmissionPolicy, NegativeCacheStats,
+    negative_cache::{NegativeCache, NegativeLookup},
     output::{DisplayRegion, FilmOutput, OutputError, Rgb16Image, output_channel_count},
 };
 
@@ -1104,25 +1104,16 @@ impl WgpuBackend {
         let lookup = if options.isolate_photo_caches {
             NegativeLookup::Bypass
         } else {
-            let cache_enabled = self.negative_cache.lock().unwrap().enabled();
-            let negative_key = options.source.filter(|_| cache_enabled).map(|source| {
-                NegativeKey::new(p, source, self.grain_reference.as_ref())
-            });
-            self.negative_cache.lock().unwrap().begin(negative_key, img_bytes as u64)
+            self.negative_cache.lock().unwrap().begin_prepared(
+                p, options.source, self.grain_reference.as_ref(), img_bytes as u64,
+            )
         };
-        let (negative_hit, negative_publication) = match lookup {
+        let (negative_hit, mut negative_publication) = match lookup {
             NegativeLookup::Bypass => (None, None),
             NegativeLookup::Hit(buffer) => (Some(buffer), None),
             NegativeLookup::Miss(publication) => (None, Some(publication)),
         };
-        let negative_snapshot = negative_publication.as_ref().map(|_| {
-            self.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("completed_negative_snapshot"),
-                size: img_bytes as u64,
-                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            })
-        });
+
 
         // Ping-pong image buffers (each holds H*W*3 f32 values).
         let make_img_buf = |label: &str| {
@@ -1208,7 +1199,7 @@ impl WgpuBackend {
             })
         };
 
-        // Static (LUT) buffers — uploaded once.
+        // Per-request static (LUT) buffers; unused front data is skipped on a density hit.
         let mk_storage = |label: &str, bytes: &[u8]| {
             self.device
                 .create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1227,15 +1218,6 @@ impl WgpuBackend {
         };
 
         // ── Pre-compute every static GPU-side buffer ─────────────────────
-        // Filming density curves — already normalized by caller.
-        let film_log_exp_f32: Vec<f32> = film_log_exposure.iter().map(|&v| v as f32).collect();
-        let film_curves_f32: Vec<f32> = film_density_curves_normalized
-            .iter()
-            .flat_map(|r| r.iter().map(|&v| if v.is_nan() { 0.0 } else { v as f32 }))
-            .collect();
-        let film_log_exp_buf = mk_storage("film_log_exp", bytemuck::cast_slice(&film_log_exp_f32));
-        let film_curves_buf = mk_storage("film_curves", bytemuck::cast_slice(&film_curves_f32));
-
         // Film spectral data (for printing pass).
         let (film_cd_f32, mut film_bd_f32) = sanitize_spectral_inputs(
             film_channel_density,
@@ -1295,38 +1277,6 @@ impl WgpuBackend {
         );
 
         // ── Param structs ────────────────────────────────────────────────
-        // Front pass (hanatos LUT lookup or mallett matmul). Both shaders
-        // share this uniform layout; `lut_size` is hanatos-only (0 for
-        // mallett, where the field is a pad).
-        #[repr(C)]
-        #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-        struct FrontParams {
-            width: u32,
-            height: u32,
-            lut_size: u32,
-            _pad: u32,
-            col0: [f32; 4],
-            col1: [f32; 4],
-            col2: [f32; 4],
-        }
-        let (m, front_lut_size) = match &p.front {
-            crate::FrontPass::Hanatos2025 {
-                tc_lut,
-                rgb_to_adapted_xyz,
-            } => (rgb_to_adapted_xyz, tc_lut.size as u32),
-            crate::FrontPass::Mallett2019 { matrix } => (matrix, 0u32),
-        };
-        let front_params = FrontParams {
-            width: image.width,
-            height: image.height,
-            lut_size: front_lut_size,
-            _pad: 0,
-            col0: [m[0][0] as f32, m[1][0] as f32, m[2][0] as f32, 0.0],
-            col1: [m[0][1] as f32, m[1][1] as f32, m[2][1] as f32, 0.0],
-            col2: [m[0][2] as f32, m[1][2] as f32, m[2][2] as f32, 0.0],
-        };
-        let front_params_buf = mk_uniform("front_params", bytemuck::bytes_of(&front_params));
-
         #[repr(C)]
         #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
         struct DensityParams {
@@ -1337,17 +1287,6 @@ impl WgpuBackend {
             gamma_inv: [f32; 3],
             _pad: f32,
         }
-        let film_density_params = DensityParams {
-            width: image.width,
-            height: image.height,
-            k: film_log_exposure.len() as u32,
-            uniform_grid: if is_uniform(film_log_exposure) { 1 } else { 0 },
-            gamma_inv: [(1.0 / film_gamma) as f32; 3],
-            _pad: 0.0,
-        };
-        let film_density_params_buf =
-            mk_uniform("film_dens_params", bytemuck::bytes_of(&film_density_params));
-
         #[repr(C)]
         #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
         struct PrintParams {
@@ -1463,147 +1402,204 @@ impl WgpuBackend {
         // ── Build bind groups (per dispatch, but no buffer creation) ─────
         let workgroup_size = 1024u32;
 
-        // Front pass: hanatos (params + rgb_in + tc_lut + raw_out) or mallett
-        // (params + rgb_in + raw_out). The tc_lut buffer rides along in the
-        // tuple to outlive the encoder on the hanatos arm.
-        let (front_pipe, bg_front, _front_tc_lut) = match &p.front {
-            crate::FrontPass::Hanatos2025 { tc_lut, .. } => {
-                let tc_lut_f32: Vec<f32> = tc_lut.data.iter().map(|&v| v as f32).collect();
-                let tc_lut_buf = mk_storage("tc_lut", bytemuck::cast_slice(&tc_lut_f32));
-                let pipe = self.cached_pipeline(
-                    include_str!("../../spektrafilm-shaders/wgsl/hanatos2025_rgb_to_raw.wgsl"),
-                    &[
-                        wgpu::BufferBindingType::Uniform,
-                        wgpu::BufferBindingType::Storage { read_only: true },
-                        wgpu::BufferBindingType::Storage { read_only: true },
-                        wgpu::BufferBindingType::Storage { read_only: false },
-                    ],
-                );
-                let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("bg_hanatos"),
-                    layout: &pipe.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: front_params_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: buf_a.as_entire_binding(),
-                        }, // rgb_in
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: tc_lut_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 3,
-                            resource: buf_b.as_entire_binding(),
-                        }, // raw_out
-                    ],
-                });
-                (pipe, bg, Some(tc_lut_buf))
-            }
-            crate::FrontPass::Mallett2019 { .. } => {
-                let pipe = self.cached_pipeline(
-                    include_str!("../../spektrafilm-shaders/wgsl/mallett_rgb_to_raw.wgsl"),
-                    &[
-                        wgpu::BufferBindingType::Uniform,
-                        wgpu::BufferBindingType::Storage { read_only: true },
-                        wgpu::BufferBindingType::Storage { read_only: false },
-                    ],
-                );
-                let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("bg_mallett"),
-                    layout: &pipe.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: front_params_buf.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: buf_a.as_entire_binding(),
-                        }, // rgb_in
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: buf_b.as_entire_binding(),
-                        }, // raw_out
-                    ],
-                });
-                (pipe, bg, None)
-            }
-        };
-        // After the front pass: log10 + density curve interp into normalized
-        // film curves. The front pass outputs raw (not log_raw), so a small
-        // log10 shader transforms buf_b in-place, then density_curve_interp
-        // reads buf_b → buf_a.
+        // A completed density hit bypasses the entire front pass, including
+        // its CPU conversions, LUT uploads, uniforms and bind groups.
+        let filming_state = negative_hit.is_none().then(|| {
+            // Filming density curves — already normalized by caller.
+            let film_log_exp_f32: Vec<f32> = film_log_exposure.iter().map(|&v| v as f32).collect();
+            let film_curves_f32: Vec<f32> = film_density_curves_normalized
+                .iter()
+                .flat_map(|r| r.iter().map(|&v| if v.is_nan() { 0.0 } else { v as f32 }))
+                .collect();
+            let film_log_exp_buf = mk_storage("film_log_exp", bytemuck::cast_slice(&film_log_exp_f32));
+            let film_curves_buf = mk_storage("film_curves", bytemuck::cast_slice(&film_curves_f32));
 
-        let bg_log10 = {
-            let pipe = self.cached_pipeline(
-                include_str!("../../spektrafilm-shaders/wgsl/log10_inplace.wgsl"),
-                &[
-                    wgpu::BufferBindingType::Uniform,
-                    wgpu::BufferBindingType::Storage { read_only: false },
-                ],
-            );
+            // Front pass (hanatos LUT lookup or mallett matmul). Both shaders
+            // share this uniform layout; `lut_size` is hanatos-only (0 for
+            // mallett, where the field is a pad).
             #[repr(C)]
             #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-            struct Log10Params {
-                // WGSL struct: `n: u32 + _pad: vec3<u32>`. vec3 has 16-byte alignment,
-                // so the struct is 32 bytes total. We pad on the Rust side accordingly.
-                n_pixels: u32,
-                _pad: [u32; 7],
+            struct FrontParams {
+                width: u32,
+                height: u32,
+                lut_size: u32,
+                _pad: u32,
+                col0: [f32; 4],
+                col1: [f32; 4],
+                col2: [f32; 4],
             }
-            let log10_params_buf = mk_uniform(
-                "log10_params",
-                bytemuck::bytes_of(&Log10Params {
-                    n_pixels,
-                    _pad: [0; 7],
-                }),
-            );
-            let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("bg_log10"),
-                layout: &pipe.layout,
+            let (m, front_lut_size) = match &p.front {
+                crate::FrontPass::Hanatos2025 {
+                    tc_lut,
+                    rgb_to_adapted_xyz,
+                } => (rgb_to_adapted_xyz, tc_lut.size as u32),
+                crate::FrontPass::Mallett2019 { matrix } => (matrix, 0u32),
+            };
+            let front_params = FrontParams {
+                width: image.width,
+                height: image.height,
+                lut_size: front_lut_size,
+                _pad: 0,
+                col0: [m[0][0] as f32, m[1][0] as f32, m[2][0] as f32, 0.0],
+                col1: [m[0][1] as f32, m[1][1] as f32, m[2][1] as f32, 0.0],
+                col2: [m[0][2] as f32, m[1][2] as f32, m[2][2] as f32, 0.0],
+            };
+            let front_params_buf = mk_uniform("front_params", bytemuck::bytes_of(&front_params));
+
+            let film_density_params = DensityParams {
+                width: image.width,
+                height: image.height,
+                k: film_log_exposure.len() as u32,
+                uniform_grid: if is_uniform(film_log_exposure) { 1 } else { 0 },
+                gamma_inv: [(1.0 / film_gamma) as f32; 3],
+                _pad: 0.0,
+            };
+            let film_density_params_buf =
+                mk_uniform("film_dens_params", bytemuck::bytes_of(&film_density_params));
+
+            // Front pass: hanatos (params + rgb_in + tc_lut + raw_out) or mallett
+            // (params + rgb_in + raw_out). The tc_lut buffer rides along in the
+            // tuple to outlive the encoder on the hanatos arm.
+            let (front_pipe, bg_front, _front_tc_lut) = match &p.front {
+                crate::FrontPass::Hanatos2025 { tc_lut, .. } => {
+                    let tc_lut_f32: Vec<f32> = tc_lut.data.iter().map(|&v| v as f32).collect();
+                    let tc_lut_buf = mk_storage("tc_lut", bytemuck::cast_slice(&tc_lut_f32));
+                    let pipe = self.cached_pipeline(
+                        include_str!("../../spektrafilm-shaders/wgsl/hanatos2025_rgb_to_raw.wgsl"),
+                        &[
+                            wgpu::BufferBindingType::Uniform,
+                            wgpu::BufferBindingType::Storage { read_only: true },
+                            wgpu::BufferBindingType::Storage { read_only: true },
+                            wgpu::BufferBindingType::Storage { read_only: false },
+                        ],
+                    );
+                    let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("bg_hanatos"),
+                        layout: &pipe.layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: front_params_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: buf_a.as_entire_binding(),
+                            }, // rgb_in
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: tc_lut_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 3,
+                                resource: buf_b.as_entire_binding(),
+                            }, // raw_out
+                        ],
+                    });
+                    (pipe, bg, Some(tc_lut_buf))
+                }
+                crate::FrontPass::Mallett2019 { .. } => {
+                    let pipe = self.cached_pipeline(
+                        include_str!("../../spektrafilm-shaders/wgsl/mallett_rgb_to_raw.wgsl"),
+                        &[
+                            wgpu::BufferBindingType::Uniform,
+                            wgpu::BufferBindingType::Storage { read_only: true },
+                            wgpu::BufferBindingType::Storage { read_only: false },
+                        ],
+                    );
+                    let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("bg_mallett"),
+                        layout: &pipe.layout,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: front_params_buf.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: buf_a.as_entire_binding(),
+                            }, // rgb_in
+                            wgpu::BindGroupEntry {
+                                binding: 2,
+                                resource: buf_b.as_entire_binding(),
+                            }, // raw_out
+                        ],
+                    });
+                    (pipe, bg, None)
+                }
+            };
+            // After the front pass: log10 + density curve interp into normalized
+            // film curves. The front pass outputs raw (not log_raw), so a small
+            // log10 shader transforms buf_b in-place, then density_curve_interp
+            // reads buf_b → buf_a.
+
+            let bg_log10 = {
+                let pipe = self.cached_pipeline(
+                    include_str!("../../spektrafilm-shaders/wgsl/log10_inplace.wgsl"),
+                    &[
+                        wgpu::BufferBindingType::Uniform,
+                        wgpu::BufferBindingType::Storage { read_only: false },
+                    ],
+                );
+                #[repr(C)]
+                #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+                struct Log10Params {
+                    // WGSL struct: `n: u32 + _pad: vec3<u32>`. vec3 has 16-byte alignment,
+                    // so the struct is 32 bytes total. We pad on the Rust side accordingly.
+                    n_pixels: u32,
+                    _pad: [u32; 7],
+                }
+                let log10_params_buf = mk_uniform(
+                    "log10_params",
+                    bytemuck::bytes_of(&Log10Params {
+                        n_pixels,
+                        _pad: [0; 7],
+                    }),
+                );
+                let bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("bg_log10"),
+                    layout: &pipe.layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: log10_params_buf.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: buf_b.as_entire_binding(),
+                        },
+                    ],
+                });
+                // Return both the buffer (to keep it alive) and the bind group.
+                (pipe, bg, log10_params_buf)
+            };
+
+            let bg_density_film = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("bg_density_film"),
+                layout: &density_pipe.layout,
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: log10_params_buf.as_entire_binding(),
+                        resource: film_density_params_buf.as_entire_binding(),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
                         resource: buf_b.as_entire_binding(),
+                    }, // log_raw
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: film_log_exp_buf.as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: film_curves_buf.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 4,
+                        resource: buf_a.as_entire_binding(),
+                    }, // density_cmy
                 ],
             });
-            // Return both the buffer (to keep it alive) and the bind group.
-            (pipe, bg, log10_params_buf)
-        };
-
-        let bg_density_film = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("bg_density_film"),
-            layout: &density_pipe.layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: film_density_params_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: buf_b.as_entire_binding(),
-                }, // log_raw
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: film_log_exp_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: film_curves_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: buf_a.as_entire_binding(),
-                }, // density_cmy
-            ],
+            (front_pipe, bg_front, _front_tc_lut, bg_log10, bg_density_film)
         });
         let bg_print = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("bg_print"),
@@ -1709,7 +1705,7 @@ impl WgpuBackend {
         });
 
         // ── Halation auxiliary buffers + bind groups (only if active) ────
-        // Allocated up-front so they live for the encoder. The two ping-pong
+        // Prepare only the current stage. The two ping-pong
         // buffers `buf_a` / `buf_b` are reused as blur input/mid; the new
         // `buf_c` and `buf_d` hold the scatter outputs and the halation
         // accumulator. None of this is touched when `p.halation` is `None`.
@@ -1754,6 +1750,183 @@ impl WgpuBackend {
             })
         });
 
+        // A host can opt into the retained cooperative boundaries. Ordinary
+        // renders keep one command buffer, with no intermediate queue waits.
+        options.check_cancelled()?;
+        let cooperative = options.submission_policy == FilmSubmissionPolicy::CooperativeStages
+            && options.cancellation.is_some();
+        let detailed = cooperative && n_pixels > 2048 * 2048;
+        let mut stage_wait_ms = 0.0;
+        let checkpoint = |encoder: &mut wgpu::CommandEncoder| -> Result<f32, OutputError> {
+            options.check_cancelled()?;
+            let start = std::time::Instant::now();
+            let completed = std::mem::replace(
+                encoder,
+                self.device.create_command_encoder(&Default::default()),
+            );
+            let submitted = self.submit_with_options([completed.finish()], options)?;
+            self.device.poll(wgpu::PollType::Wait {
+                submission_index: Some(submitted),
+                timeout: None,
+            }).map_err(|_| OutputError::GpuFailure)?;
+            Ok(start.elapsed().as_secs_f32() * 1000.0)
+        };
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let dispatch = |encoder: &mut wgpu::CommandEncoder,
+                        pipe: &wgpu::ComputePipeline,
+                        bg: &wgpu::BindGroup,
+                        n: u32| {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: None,
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(pipe);
+            pass.set_bind_group(0, bg, &[]);
+            pass.dispatch_workgroups((n + workgroup_size - 1) / workgroup_size, 1, 1);
+        };
+
+        // 1. Front pass (hanatos or mallett): buf_a (rgb in) → buf_b (raw)
+        if let Some(snapshot) = negative_hit.as_ref() {
+            // Published snapshots are immutable and separate from every work
+            // pair. Downstream printing is free to overwrite this private copy.
+            encoder.copy_buffer_to_buffer(snapshot, 0, &buf_a, 0, img_bytes as u64);
+        } else {
+            let (front_pipe, bg_front, _tc_lut, bg_log10, bg_density_film) =
+                filming_state.as_ref().expect("uncached filming state");
+            dispatch(&mut encoder, &front_pipe.pipeline, bg_front, n_pixels);
+            // 1a. Highlight boost on raw, before optical scatter.
+            if let Some(hs) = highlight_state.as_ref() {
+                hs.encode_passes(&mut encoder);
+            }
+            // 1a. Camera diffusion filter in-place on buf_b (raw), before
+            //     halation — mirrors the CPU filming order.
+            if let Some(ds) = diffusion_state.as_ref() {
+                ds.encode_passes(&mut encoder, &buf_b);
+            }
+            // 1b. Camera lens blur on raw, after camera diffusion and before halation.
+            if let Some(bs) = camera_lens_blur_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                bs.encode_passes(&mut encoder, wg_xy, &buf_b);
+            }
+            // 1b. Halation in-place on buf_b. Uses buf_a as blur scratch (the
+            //     input RGB image is no longer needed), buf_c / buf_d for the
+            //     scatter outputs and halation accumulator.
+            if let Some(hs) = halation_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                hs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy, &mut |encoder| {
+                    if detailed {
+                        stage_wait_ms += checkpoint(encoder)?;
+                        options.check_cancelled()?;
+                    }
+                    Ok(())
+                })?;
+            }
+            if detailed {
+                stage_wait_ms += checkpoint(&mut encoder)?;
+                options.check_cancelled()?;
+            }
+            // ── DIR couplers state ────────────────────────────────────────────
+            // Allocated lazily when the DIR stage is active. Reads buf_a
+            // (density_cmy from film density curve) and buf_b (log_raw),
+            // produces a corrected buf_a via re-interpolation of
+            // `density_curves_0` against `log_raw - correction`. Uses three
+            // owned scratch buffers (correction, mid, accumulator). buf_a is
+            // reused as blur mid since density_cmy is no longer needed once
+            // the matmul has consumed it (the final density_curve_interp
+            // overwrites buf_a anyway).
+            let dir_state = p.dir_couplers.as_ref().filter(|_| negative_hit.is_none()).map(|dp| {
+                build_dir_state(
+                    &self.device,
+                    dp,
+                    image.width,
+                    image.height,
+                    &buf_a,
+                    &buf_b,
+                    self,
+                )
+            });
+            // 2. log10 in-place on buf_b: raw → log_raw (3 channels per thread).
+            let (log10_pipe, log10_bg, _keepalive) = bg_log10;
+            dispatch(&mut encoder, &log10_pipe.pipeline, log10_bg, n_pixels);
+            // 3. Density curve (film, normalized): buf_b (log_raw) → buf_a (density_cmy)
+            dispatch(
+                &mut encoder,
+                &density_pipe.pipeline,
+                bg_density_film,
+                n_pixels,
+            );
+            // 3b. DIR couplers (operates on buf_a, mutates buf_b → log_raw_corrected,
+            //     re-interps density curve back into buf_a).
+            if let Some(ds) = dir_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                ds.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy, &mut |encoder| {
+                    if detailed {
+                        stage_wait_ms += checkpoint(encoder)?;
+                        options.check_cancelled()?;
+                    }
+                    Ok(())
+                })?;
+            }
+            if detailed {
+                stage_wait_ms += checkpoint(&mut encoder)?;
+                options.check_cancelled()?;
+            }
+            // ── Grain state ──────────────────────────────────────────────────
+            // Applied in place on buf_a (density_cmy) after DIR couplers,
+            // before print_spectral. Optionally followed by a Gaussian
+            // post-blur (uses buf_b as mid, since log_raw_corrected in buf_b
+            // is no longer needed after DIR's final density_curve_0).
+            let grain_state = p.grain.as_ref().filter(|_| negative_hit.is_none()).map(|gp| {
+                build_grain_state(
+                    &self.device,
+                    gp,
+                    image.width,
+                    image.height,
+                    &buf_a,
+                    &buf_b,
+                    self,
+                )
+            });
+            // 3c. Grain (in-place on buf_a, optional post-blur via buf_b mid).
+            if let Some(gs) = grain_state.as_ref() {
+                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
+                gs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
+            }
+        }
+        options.check_cancelled()?;
+        let mut negative_snapshot = negative_publication.as_ref().map(|_| {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("completed_negative_snapshot"),
+                size: img_bytes as u64,
+                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        });
+        if let Some(snapshot) = negative_snapshot.as_ref() {
+            // Capture the physical negative after DIR/grain, before any paper
+            // or scan stage can overwrite buf_a. Publish only after the GPU
+            // has completed the snapshot's copy.
+            encoder.copy_buffer_to_buffer(&buf_a, 0, snapshot, 0, img_bytes as u64);
+        }
+        if cooperative && negative_hit.is_none() {
+            // Detailed rendering already completed density above. Without
+            // grain or a snapshot copy, the encoder contains no new work.
+            if !detailed || p.grain.is_some() || negative_snapshot.is_some() {
+                stage_wait_ms += checkpoint(&mut encoder)?;
+            }
+            // A completed negative is valid independently of later output or
+            // cancellation. The cache still checks its generation, latest
+            // ticket and budget. Consume both handles even if it rejects the
+            // publication, so final output cannot resurrect an invalidation.
+            if let (Some(publication), Some(snapshot)) =
+                (negative_publication.take(), negative_snapshot.take())
+            {
+                self.negative_cache.lock().unwrap().publish(publication, snapshot, img_bytes as u64);
+            }
+            options.check_cancelled()?;
+        }
+        // Whole-chain rendering keeps its snapshot private until final output
+        // succeeds. Neither policy publishes an incomplete negative or frame.
         // ── Unsharp mask state ───────────────────────────────────────────
         // Last pass before readback. Blurs buf_b → buf_c (via buf_a mid),
         // then combines: buf_b_out = (1+amount)*buf_b - amount*buf_c.
@@ -1813,44 +1986,6 @@ impl WgpuBackend {
             })
         });
 
-        // ── Grain state ──────────────────────────────────────────────────
-        // Applied in place on buf_a (density_cmy) after DIR couplers,
-        // before print_spectral. Optionally followed by a Gaussian
-        // post-blur (uses buf_b as mid, since log_raw_corrected in buf_b
-        // is no longer needed after DIR's final density_curve_0).
-        let grain_state = p.grain.as_ref().filter(|_| negative_hit.is_none()).map(|gp| {
-            build_grain_state(
-                &self.device,
-                gp,
-                image.width,
-                image.height,
-                &buf_a,
-                &buf_b,
-                self,
-            )
-        });
-
-        // ── DIR couplers state ────────────────────────────────────────────
-        // Allocated lazily when the DIR stage is active. Reads buf_a
-        // (density_cmy from film density curve) and buf_b (log_raw),
-        // produces a corrected buf_a via re-interpolation of
-        // `density_curves_0` against `log_raw - correction`. Uses three
-        // owned scratch buffers (correction, mid, accumulator). buf_a is
-        // reused as blur mid since density_cmy is no longer needed once
-        // the matmul has consumed it (the final density_curve_interp
-        // overwrites buf_a anyway).
-        let dir_state = p.dir_couplers.as_ref().filter(|_| negative_hit.is_none()).map(|dp| {
-            build_dir_state(
-                &self.device,
-                dp,
-                image.width,
-                image.height,
-                &buf_a,
-                &buf_b,
-                self,
-            )
-        });
-
         let enlarger_log_to_linear_state = p.enlarger_diffusion.as_ref().map(|_| {
             build_log_to_linear_state(&self.device, n_pixels, print_exposure_scale, &buf_b, self)
         });
@@ -1864,76 +1999,6 @@ impl WgpuBackend {
         let post_scan_state =
             build_post_scan_state(&self.device, n_pixels, p.output_cctf_encoding, &buf_b, self);
 
-        // ── Single command buffer chaining everything ────────────────────
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-        let dispatch = |encoder: &mut wgpu::CommandEncoder,
-                        pipe: &wgpu::ComputePipeline,
-                        bg: &wgpu::BindGroup,
-                        n: u32| {
-            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-                label: None,
-                timestamp_writes: None,
-            });
-            pass.set_pipeline(pipe);
-            pass.set_bind_group(0, bg, &[]);
-            pass.dispatch_workgroups((n + workgroup_size - 1) / workgroup_size, 1, 1);
-        };
-
-        // 1. Front pass (hanatos or mallett): buf_a (rgb in) → buf_b (raw)
-        if let Some(snapshot) = negative_hit.as_ref() {
-            // Published snapshots are immutable and separate from every work
-            // pair. Downstream printing is free to overwrite this private copy.
-            encoder.copy_buffer_to_buffer(snapshot, 0, &buf_a, 0, img_bytes as u64);
-        } else {
-            dispatch(&mut encoder, &front_pipe.pipeline, &bg_front, n_pixels);
-            // 1a. Highlight boost on raw, before optical scatter.
-            if let Some(hs) = highlight_state.as_ref() {
-                hs.encode_passes(&mut encoder);
-            }
-            // 1a. Camera diffusion filter in-place on buf_b (raw), before
-            //     halation — mirrors the CPU filming order.
-            if let Some(ds) = diffusion_state.as_ref() {
-                ds.encode_passes(&mut encoder, &buf_b);
-            }
-            // 1b. Camera lens blur on raw, after camera diffusion and before halation.
-            if let Some(bs) = camera_lens_blur_state.as_ref() {
-                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-                bs.encode_passes(&mut encoder, wg_xy, &buf_b);
-            }
-            // 1b. Halation in-place on buf_b. Uses buf_a as blur scratch (the
-            //     input RGB image is no longer needed), buf_c / buf_d for the
-            //     scatter outputs and halation accumulator.
-            if let Some(hs) = halation_state.as_ref() {
-                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-                hs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
-            }
-            // 2. log10 in-place on buf_b: raw → log_raw (3 channels per thread).
-            let (log10_pipe, log10_bg, _keepalive) = &bg_log10;
-            dispatch(&mut encoder, &log10_pipe.pipeline, log10_bg, n_pixels);
-            // 3. Density curve (film, normalized): buf_b (log_raw) → buf_a (density_cmy)
-            dispatch(
-                &mut encoder,
-                &density_pipe.pipeline,
-                &bg_density_film,
-                n_pixels,
-            );
-            // 3b. DIR couplers (operates on buf_a, mutates buf_b → log_raw_corrected,
-            //     re-interps density curve back into buf_a).
-            if let Some(ds) = dir_state.as_ref() {
-                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-                ds.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
-            }
-            // 3c. Grain (in-place on buf_a, optional post-blur via buf_b mid).
-            if let Some(gs) = grain_state.as_ref() {
-                let wg_xy = (image.width.div_ceil(16), image.height.div_ceil(16));
-                gs.encode_passes(&mut encoder, n_pixels, workgroup_size, wg_xy);
-            }
-        }
-        if let Some(snapshot) = negative_snapshot.as_ref() {
-            // Capture the physical negative after DIR/grain, before any paper
-            // or scan stage can overwrite buf_a. Do not publish until success.
-            encoder.copy_buffer_to_buffer(&buf_a, 0, snapshot, 0, img_bytes as u64);
-        }
         // 4 + 5. Printing: print_spectral (buf_a → buf_b) then the print
         //     density curve (buf_b → buf_a). Skipped for scan_film — the
         //     scan pass consumes the film density already in buf_a.
@@ -2006,7 +2071,7 @@ impl WgpuBackend {
             cctf_encoding: p.output_cctf_encoding,
         })?;
         options.check_cancelled()?;
-        let cpu_setup_ms = t_start.elapsed().as_secs_f32() * 1000.0;
+        let cpu_setup_ms = t_start.elapsed().as_secs_f32() * 1000.0 - stage_wait_ms;
         let submitted = self.submit_with_options(Some(encoder.finish()), options)?;
         self.device.poll(wgpu::PollType::Wait {
             submission_index: Some(submitted), timeout: None,
@@ -2043,24 +2108,23 @@ impl WgpuBackend {
         shader_source: &'static str,
         binding_types: &[wgpu::BufferBindingType],
     ) -> CachedPipelineRef {
-        let entries: Vec<wgpu::BindGroupLayoutEntry> = binding_types
-            .iter()
-            .enumerate()
-            .map(|(i, &ty)| wgpu::BindGroupLayoutEntry {
-                binding: i as u32,
-                visibility: wgpu::ShaderStages::COMPUTE,
-                ty: wgpu::BindingType::Buffer {
-                    ty,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            })
-            .collect();
-        let entries_for_compile = entries;
         let mut cache = self.pipeline_cache.lock().unwrap();
         let key = shader_source.as_ptr() as usize;
-        if !cache.contains_key(&key) {
+        if let std::collections::hash_map::Entry::Vacant(entry) = cache.entry(key) {
+            let entries: Vec<wgpu::BindGroupLayoutEntry> = binding_types
+                .iter()
+                .enumerate()
+                .map(|(i, &ty)| wgpu::BindGroupLayoutEntry {
+                    binding: i as u32,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                })
+                .collect();
             let shader = self
                 .device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -2071,7 +2135,7 @@ impl WgpuBackend {
                 self.device
                     .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                         label: Some("compute_layout"),
-                        entries: &entries_for_compile,
+                        entries: &entries,
                     });
             let pipeline_layout =
                 self.device
@@ -2090,13 +2154,10 @@ impl WgpuBackend {
                     compilation_options: Default::default(),
                     cache: None,
                 });
-            cache.insert(
-                key,
-                CachedPipeline {
-                    bind_group_layout,
-                    pipeline,
-                },
-            );
+            entry.insert(CachedPipeline {
+                bind_group_layout,
+                pipeline,
+            });
         }
         // Drop the guard but the underlying Arc keeps the entries alive.
         // Return cloned handles.
@@ -2975,7 +3036,8 @@ impl HalationState {
         n_pixels: u32,
         workgroup_size: u32,
         wg_xy: (u32, u32),
-    ) {
+        checkpoint: &mut impl FnMut(&mut wgpu::CommandEncoder) -> Result<(), OutputError>,
+    ) -> Result<(), OutputError> {
         let _ = (&self.buf_c, &self.buf_d); // owned, just keepalive
         let dispatch_blur = |enc: &mut wgpu::CommandEncoder, job: &BlurJob| {
             {
@@ -3011,6 +3073,7 @@ impl HalationState {
         if !self.scatter_blurs.is_empty() {
             for j in &self.scatter_blurs {
                 dispatch_blur(encoder, j);
+                checkpoint(encoder)?;
             }
             dispatch_linear(encoder, &self.scatter_mix);
         }
@@ -3023,6 +3086,7 @@ impl HalationState {
         {
             dispatch_blur(encoder, blur_job);
             dispatch_linear(encoder, acc_job);
+            checkpoint(encoder)?;
         }
         if !self.halation_blurs.is_empty() {
             dispatch_linear(encoder, &self.halation_final_add);
@@ -3030,6 +3094,7 @@ impl HalationState {
                 dispatch_linear(encoder, rn);
             }
         }
+        Ok(())
     }
 }
 
@@ -4544,7 +4609,8 @@ impl DirState {
         n_pixels: u32,
         workgroup_size: u32,
         wg_xy: (u32, u32),
-    ) {
+        checkpoint: &mut impl FnMut(&mut wgpu::CommandEncoder) -> Result<(), OutputError>,
+    ) -> Result<(), OutputError> {
         let dispatch_linear = |enc: &mut wgpu::CommandEncoder, job: &DispatchJob| {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("dir_linear"),
@@ -4577,11 +4643,14 @@ impl DirState {
 
         dispatch_linear(encoder, &self.matmul);
         dispatch_blur(encoder, &self.blur_gaussian); // buf_correction → buf_acc
+        checkpoint(encoder)?;
         dispatch_blur(encoder, &self.blur_tail); // buf_correction → buf_correction (overwrite)
+        checkpoint(encoder)?;
         dispatch_linear(encoder, &self.lerp_clear); // buf_acc *= (1-w)
         dispatch_linear(encoder, &self.lerp_accumulate); // buf_acc += w * buf_correction
         dispatch_linear(encoder, &self.subtract); // buf_b -= buf_acc
         dispatch_linear(encoder, &self.density_curve_0); // buf_b → buf_a (corrected)
+        Ok(())
     }
 }
 

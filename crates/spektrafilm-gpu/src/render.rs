@@ -12,6 +12,24 @@ use crate::output::OutputError;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SourceIdentity(pub u128);
 
+/// Submission granularity for hosts that share the GPU with interactive work.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FilmSubmissionPolicy {
+    /// Encode the complete physical chain and its consumer into one submission.
+    #[default]
+    WholeChain,
+    /// When a cancellation signal is supplied, finish the negative before
+    /// preparing and submitting paper/scan output. Inputs above 2048² pixels
+    /// also yield at the retained optical and DIR boundaries. Each completed
+    /// stage checks cancellation before preparing further work. Once the
+    /// complete negative and its immutable snapshot finish on the GPU, that
+    /// snapshot may be retained even if later output is cancelled or fails.
+    /// Incomplete density and output frames are never published. No extra
+    /// stages are submitted without a cancellation signal, or when a completed
+    /// negative is reused.
+    CooperativeStages,
+}
+
 /// Options belong to one invocation, so concurrent sources cannot overwrite
 /// each other's identity or cancellation state in a shared backend.
 #[derive(Clone, Copy, Debug, Default)]
@@ -20,8 +38,12 @@ pub struct FilmRenderOptions<'a> {
     pub source: Option<SourceIdentity>,
     /// Cooperative cancellation at preparation/submission/completion boundaries.
     /// Already submitted GPU work is allowed to finish before resources release.
-    /// A cancelled call returns no output and publishes no density snapshot.
+    /// A cancelled call returns no output. WholeChain publishes no density on
+    /// cancellation; CooperativeStages may retain an already completed negative.
     pub cancellation: Option<&'a AtomicBool>,
+    /// Whole-chain submission is the default; interactive hosts may preserve
+    /// their existing cooperative stage policy without slowing ordinary calls.
+    pub submission_policy: FilmSubmissionPolicy,
     /// Give this invocation private work buffers and bypass the retained photo
     /// density snapshot, including cache statistics and publication tickets.
     /// Use for latitude/colour probes that share the photo device but must not

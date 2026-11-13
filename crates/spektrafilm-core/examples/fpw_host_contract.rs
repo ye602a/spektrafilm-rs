@@ -8,7 +8,7 @@
 use std::{
     error::Error,
     path::Path,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
 use spektrafilm_core::{
@@ -22,7 +22,8 @@ use spektrafilm_core::{
     stock_setup::{AcceptedStockSetup, StockRoute},
 };
 use spektrafilm_gpu::{
-    DisplayRegion, FilmRenderOptions, SourceIdentity, wgpu, wgpu_backend::WgpuBackend,
+    DisplayRegion, FilmRenderOptions, FilmSubmissionPolicy, SourceIdentity, wgpu,
+    wgpu_backend::WgpuBackend,
 };
 use spektrafilm_math::{image::ImageBuf, precision::from_f32};
 
@@ -74,6 +75,7 @@ fn render_frame(
     render: FilmRenderOptions<'_>,
     finish: PhysicalOutputOptionsV1,
 ) -> Result<PhysicalOutputTexturesV1, Box<dyn Error>> {
+    render.check_cancelled()?;
     let result = pipeline
         .try_with_resident_params(image, |params| {
             output.render(backend, params, render, finish)
@@ -144,8 +146,13 @@ fn run_on_host_device(
         // Match FPW's initial paper-only density reuse policy. The source token
         // binds prepared pixels only; RS supplies the film-stage dependencies.
         backend.configure_negative_cache(route == StockRoute::Paper);
+        // The host owns this request signal. Cooperative stages retain useful
+        // cancellation points without reading intermediate pixels back to CPU.
+        let cancellation = AtomicBool::new(false);
         let render = FilmRenderOptions {
             source: (route == StockRoute::Paper).then_some(SourceIdentity(index as u128 + 1)),
+            cancellation: Some(&cancellation),
+            submission_policy: FilmSubmissionPolicy::CooperativeStages,
             ..Default::default()
         };
         let full = render_frame(

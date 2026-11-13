@@ -40,6 +40,50 @@ impl NegativeKey {
         source: SourceIdentity,
         reference: Option<&GrainReference>,
     ) -> Self {
+        // The count traversal reads table lengths, not their contents. Reserve
+        // once so appending the small curve/control tail cannot double a large
+        // LUT allocation. It shares the exact same dependency classification.
+        let mut count = KeyWriter::Count(0);
+        Self::write(&mut count, p, source, reference);
+        let KeyWriter::Count(words) = count else {
+            unreachable!()
+        };
+        let mut writer = KeyWriter::Build(Vec::with_capacity(words));
+        Self::write(&mut writer, p, source, reference);
+        let KeyWriter::Build(words) = writer else {
+            unreachable!()
+        };
+        Self(words)
+    }
+
+    /// Compare exact prepared values directly against the retained key. A hit
+    /// allocates nothing and does not copy the TC LUT into a temporary key.
+    pub(crate) fn matches(
+        &self,
+        p: &FilmChainParams<'_>,
+        source: SourceIdentity,
+        reference: Option<&GrainReference>,
+    ) -> bool {
+        let mut writer = KeyWriter::Match {
+            remaining: &self.0,
+            equal: true,
+        };
+        Self::write(&mut writer, p, source, reference);
+        matches!(
+            writer,
+            KeyWriter::Match {
+                remaining: [],
+                equal: true
+            }
+        )
+    }
+
+    fn write(
+        k: &mut KeyWriter<'_>,
+        p: &FilmChainParams<'_>,
+        source: SourceIdentity,
+        reference: Option<&GrainReference>,
+    ) {
         // Do not use `..`: adding a chain parameter must force an explicit
         // decision here about which side of the cache boundary consumes it.
         let FilmChainParams {
@@ -81,7 +125,6 @@ impl NegativeKey {
             output_cctf_encoding: _,
         } = p;
 
-        let mut k = KeyWriter(Vec::new());
         k.u64(1); // Internal schema; entries never survive a backend/process.
         k.u64(source.0 as u64);
         k.u64((source.0 >> 64) as u64);
@@ -128,15 +171,50 @@ impl NegativeKey {
                 k.u32(u32::from_ne_bytes(word.try_into().unwrap()));
             }
         });
-        Self(k.0)
     }
 }
 
-struct KeyWriter(Vec<u64>);
+/// The same field traversal builds a miss key or compares a hit. Keeping one
+/// dependency list prevents the fast path from acquiring a separate invalidation
+/// contract. f64 arrays compare their borrowed bit patterns in bulk.
+enum KeyWriter<'a> {
+    Count(usize),
+    Build(Vec<u64>),
+    Match { remaining: &'a [u64], equal: bool },
+}
 
-impl KeyWriter {
+impl KeyWriter<'_> {
     fn u64(&mut self, v: u64) {
-        self.0.push(v);
+        match self {
+            Self::Count(words) => *words += 1,
+            Self::Build(words) => words.push(v),
+            Self::Match { remaining, equal } => {
+                if *equal {
+                    if let Some((&next, rest)) = remaining.split_first() {
+                        *equal = next == v;
+                        *remaining = rest;
+                    } else {
+                        *equal = false;
+                    }
+                }
+            }
+        }
+    }
+    fn words(&mut self, values: &[u64]) {
+        match self {
+            Self::Count(words) => *words += values.len(),
+            Self::Build(words) => words.extend_from_slice(values),
+            Self::Match { remaining, equal } => {
+                if *equal {
+                    if let Some((next, rest)) = remaining.split_at_checked(values.len()) {
+                        *equal = next == values;
+                        *remaining = rest;
+                    } else {
+                        *equal = false;
+                    }
+                }
+            }
+        }
     }
     fn u32(&mut self, v: u32) {
         self.u64(v as u64);
@@ -155,15 +233,24 @@ impl KeyWriter {
     }
     fn f32s(&mut self, values: &[f32]) {
         self.usize(values.len());
-        for &v in values {
-            self.f32(v);
+        match self {
+            Self::Count(words) => *words += values.len(),
+            Self::Build(words) => words.extend(values.iter().map(|v| v.to_bits() as u64)),
+            Self::Match { remaining, equal } => {
+                if *equal {
+                    if let Some((next, rest)) = remaining.split_at_checked(values.len()) {
+                        *equal = next.iter().zip(values).all(|(&a, b)| a == b.to_bits() as u64);
+                        *remaining = rest;
+                    } else {
+                        *equal = false;
+                    }
+                }
+            }
         }
     }
     fn f64s(&mut self, values: &[f64]) {
         self.usize(values.len());
-        for &v in values {
-            self.f64(v);
-        }
+        self.words(bytemuck::cast_slice(values));
     }
     fn f32_rows(&mut self, values: &[[f32; 3]]) {
         self.usize(values.len());
@@ -317,7 +404,8 @@ pub(crate) enum NegativeLookup<T> {
     Bypass,
     /// Immutable snapshot. Copy into the render's own work plane before use.
     Hit(T),
-    /// Create a private snapshot after grain, then publish only after success.
+    /// Create a private snapshot after grain, then publish only once the GPU
+    /// work producing that complete snapshot has successfully finished.
     Miss(NegativePublication),
 }
 
@@ -346,10 +434,6 @@ impl<T> Default for NegativeCache<T> {
 }
 
 impl<T: Clone> NegativeCache<T> {
-    pub(crate) fn enabled(&self) -> bool {
-        self.enabled
-    }
-
     pub(crate) fn configure(&mut self, enabled: bool) {
         if self.enabled != enabled {
             self.invalidate_pending();
@@ -391,10 +475,35 @@ impl<T: Clone> NegativeCache<T> {
         }
     }
 
-    pub(crate) fn begin(
+    /// Start a render without building a temporary key. Disabled, unidentified
+    /// and over-budget requests never inspect the dependency tables. Hits only
+    /// compare; misses own a key for publication after completed density work.
+    pub(crate) fn begin_prepared(
         &mut self,
-        key: Option<NegativeKey>,
+        params: &FilmChainParams<'_>,
+        source: Option<SourceIdentity>,
+        reference: Option<&GrainReference>,
         required_bytes: u64,
+    ) -> NegativeLookup<T> {
+        self.begin_with_key(
+            source,
+            required_bytes,
+            |stored, &source| stored.matches(params, source, reference),
+            |source| NegativeKey::new(params, source, reference),
+        )
+    }
+
+    #[cfg(test)]
+    fn begin(&mut self, key: Option<NegativeKey>, required_bytes: u64) -> NegativeLookup<T> {
+        self.begin_with_key(key, required_bytes, PartialEq::eq, std::convert::identity)
+    }
+
+    fn begin_with_key<K>(
+        &mut self,
+        key: Option<K>,
+        required_bytes: u64,
+        matches: impl FnOnce(&NegativeKey, &K) -> bool,
+        into_owned: impl FnOnce(K) -> NegativeKey,
     ) -> NegativeLookup<T> {
         if required_bytes == 0 || required_bytes > self.max_bytes {
             // A geometry/budget bypass must also prevent an older in-flight
@@ -415,7 +524,7 @@ impl<T: Clone> NegativeCache<T> {
             }
         }
         if let Some(entry) = self.entry.as_ref() {
-            if entry.key == key && entry.bytes == required_bytes {
+            if entry.bytes == required_bytes && matches(&entry.key, &key) {
                 self.stats.hits = self.stats.hits.saturating_add(1);
                 return NegativeLookup::Hit(entry.value.clone());
             }
@@ -423,14 +532,16 @@ impl<T: Clone> NegativeCache<T> {
         self.entry = None;
         self.stats.misses = self.stats.misses.saturating_add(1);
         NegativeLookup::Miss(NegativePublication {
-            key,
+            key: into_owned(key),
             bytes: required_bytes,
             generation: self.generation,
             ticket: self.latest_ticket,
         })
     }
 
-    /// Call only after successful completion of the render's GPU work/output.
+    /// Call only after successful GPU completion of the complete density
+    /// snapshot. Whole-chain rendering additionally waits for final output
+    /// success; cooperative rendering may retain a completed negative earlier.
     /// `value` must be an immutable density snapshot, not a recyclable work plane.
     pub(crate) fn publish(
         &mut self,
@@ -580,8 +691,14 @@ mod tests {
                     "{}",
                     stringify!($change)
                 );
+                assert!(
+                    !baseline.matches(&$p, SOURCE, None),
+                    "streaming match: {}",
+                    stringify!($change)
+                );
             }};
         }
+        assert!(baseline.matches(&fixture(&image, &lut), SOURCE, None));
         changed!(p, p.front = FrontPass::Mallett2019 { matrix: MATRIX });
         changed!(
             p,
@@ -692,6 +809,11 @@ mod tests {
                     "{}",
                     stringify!($change)
                 );
+                assert!(
+                    baseline.matches(&$p, SOURCE, None),
+                    "streaming match: {}",
+                    stringify!($change)
+                );
             }};
         }
         unchanged!(p, p.film_channel_density = &[[2.; 3]]);
@@ -747,6 +869,117 @@ mod tests {
         unchanged!(p, p.output_cctf_encoding = false);
     }
 
+    #[test]
+    fn streaming_key_preserves_float_bits_geometry_and_complete_length() {
+        let image = ImageBuf::new(2, 2);
+        let lut = TcLut {
+            size: 1,
+            channels: 3,
+            data: vec![f64::from_bits(0x7ff8_0000_0000_0001), -0.0, 0.3],
+        };
+        let mut p = fixture(&image, &lut);
+        p.grain.as_mut().unwrap().layers.as_mut().unwrap().packed[0] =
+            f32::from_bits(0x7fc0_0001);
+        let baseline = NegativeKey::new(&p, SOURCE, None);
+        assert!(
+            baseline.matches(&p, SOURCE, None),
+            "equal NaN payloads retain their identity"
+        );
+        assert!(!baseline.matches(&p, SourceIdentity(22), None));
+        let resized = ImageBuf::new(1, 4);
+        p.image = &resized;
+        assert!(!baseline.matches(&p, SOURCE, None));
+        p.image = &image;
+
+        let mut changed_lut = lut.clone();
+        changed_lut.data[0] = f64::from_bits(0x7ff8_0000_0000_0002);
+        p.front = FrontPass::Hanatos2025 {
+            tc_lut: &changed_lut,
+            rgb_to_adapted_xyz: MATRIX,
+        };
+        assert!(!baseline.matches(&p, SOURCE, None));
+        let mut zero_lut = lut.clone();
+        zero_lut.data[1] = 0.0;
+        p.front = FrontPass::Hanatos2025 {
+            tc_lut: &zero_lut,
+            rgb_to_adapted_xyz: MATRIX,
+        };
+        assert!(
+            !baseline.matches(&p, SOURCE, None),
+            "signed zero remains an exact dependency"
+        );
+        p.front = FrontPass::Hanatos2025 {
+            tc_lut: &lut,
+            rgb_to_adapted_xyz: MATRIX,
+        };
+        p.grain.as_mut().unwrap().layers.as_mut().unwrap().packed[0] =
+            f32::from_bits(0x7fc0_0002);
+        assert!(!baseline.matches(&p, SOURCE, None));
+        p.grain.as_mut().unwrap().layers.as_mut().unwrap().packed[0] =
+            f32::from_bits(0x7fc0_0001);
+
+        let reference = GrainReference::new([1., 0., 1., 0., 1., 0.], [4, 4], 2);
+        let referenced = NegativeKey::new(&p, SOURCE, Some(&reference));
+        assert!(referenced.matches(&p, SOURCE, Some(&reference)));
+        assert!(!referenced.matches(&p, SOURCE, None));
+        let moved = GrainReference::new([1., 0., 2., 0., 1., 0.], [4, 4], 2);
+        assert!(!referenced.matches(&p, SOURCE, Some(&moved)));
+
+        let mut truncated = baseline.clone();
+        truncated.0.pop();
+        assert!(!truncated.matches(&p, SOURCE, None));
+        let mut extended = baseline.clone();
+        extended.0.push(0);
+        assert!(
+            !extended.matches(&p, SOURCE, None),
+            "a matching prefix is not a complete key"
+        );
+    }
+
+    #[test]
+    fn negative_cache_builds_keys_only_for_eligible_misses() {
+        let mut cache = NegativeCache::<u64>::default();
+        let unexpected_match = |_: &NegativeKey, _: &u64| -> bool {
+            panic!("bypassed request must not inspect dependency tables")
+        };
+        let unexpected_build = |_: u64| -> NegativeKey {
+            panic!("bypassed or matching request must not allocate a key")
+        };
+        assert!(matches!(
+            cache.begin_with_key(Some(7), 24, unexpected_match, unexpected_build),
+            NegativeLookup::Bypass
+        ));
+        cache.configure(true);
+        assert!(matches!(
+            cache.begin_with_key(None::<u64>, 24, unexpected_match, unexpected_build),
+            NegativeLookup::Bypass
+        ));
+        cache.set_budget(23);
+        assert!(matches!(
+            cache.begin_with_key(Some(7), 24, unexpected_match, unexpected_build),
+            NegativeLookup::Bypass
+        ));
+        cache.set_budget(24);
+        let NegativeLookup::Miss(publication) =
+            cache.begin_with_key(Some(7), 24, unexpected_match, key)
+        else {
+            panic!("first eligible request must build its publication key")
+        };
+        assert!(cache.publish(publication, 42, 24));
+        let hit = cache.begin_with_key(
+            Some(7),
+            24,
+            |stored, &request| stored.0 == [request],
+            unexpected_build,
+        );
+        assert!(matches!(hit, NegativeLookup::Hit(42)));
+        let miss = cache.begin_with_key(Some(8), 24, |stored, &request| stored.0 == [request], key);
+        assert!(matches!(miss, NegativeLookup::Miss(_)));
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.stats().misses, 2);
+        assert_eq!(cache.stats().bypasses, 3);
+    }
+
     fn key(n: u64) -> NegativeKey {
         NegativeKey(vec![n])
     }
@@ -760,7 +993,7 @@ mod tests {
     #[test]
     fn negative_cache_is_opt_in_and_dropped_requests_never_publish() {
         let mut cache = NegativeCache::<u64>::default();
-        assert!(!cache.enabled());
+        assert!(!cache.enabled);
         assert!(matches!(
             cache.begin(Some(key(1)), 24),
             NegativeLookup::Bypass

@@ -124,8 +124,12 @@ jobs:
 
       - name: Verify density invalidation and scoped RGB16-region output on Vulkan
         run: |
+          cargo test --locked -p spektrafilm-gpu --lib output_mapping_completes_with_its_submission_and_abandoned_encoding_recovers -- --nocapture
           cargo test --locked -p spektrafilm-gpu --test output_kernels -- --nocapture
           cargo test --locked -p spektrafilm-core --test negative_cache --test gpu_output -- --nocapture
+
+      - name: Preserve cooperative cancellation and exact physical output
+        run: cargo test --locked -p spektrafilm-gpu --test cooperative_submission -- --nocapture
 
       - name: Verify FPW resource identities and frozen output sources
         run: |

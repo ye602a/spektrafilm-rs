@@ -3,6 +3,14 @@
 use super::*;
 use wgpu::util::DeviceExt;
 
+/// A mapping registered on the same submission as the output writes. The
+/// backend's existing submission wait drives its completion; no second queue
+/// wait is needed when the CPU result is collected.
+struct OutputReadback {
+    buffer: wgpu::Buffer,
+    mapping: std::sync::mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>,
+}
+
 impl WgpuBackend {
     pub fn run_film_chain_with_options(
         &self,
@@ -109,41 +117,44 @@ impl WgpuBackend {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         source: &wgpu::Buffer,
-    ) -> wgpu::Buffer {
+    ) -> OutputReadback {
         // Keep the existing integrated-GPU direct-map route. Those work planes
         // are never pooled and stay owned through map completion and unmap.
-        if source.usage().contains(wgpu::BufferUsages::MAP_READ) {
-            return source.clone();
-        }
-        let target = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("film_output_readback"),
-            size: source.size(),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
+        let buffer = if source.usage().contains(wgpu::BufferUsages::MAP_READ) {
+            source.clone()
+        } else {
+            let target = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("film_output_readback"),
+                size: source.size(),
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            encoder.copy_buffer_to_buffer(source, 0, &target, 0, source.size());
+            target
+        };
+        let (tx, mapping) = std::sync::mpsc::channel();
+        // Starting the map while encoding would make the buffer unavailable
+        // to this command. wgpu defers it until immediately after submission,
+        // so the one existing wait completes both GPU writes and mapping.
+        encoder.map_buffer_on_submit(&buffer, wgpu::MapMode::Read, .., move |result| {
+            let _ = tx.send(result);
         });
-        encoder.copy_buffer_to_buffer(source, 0, &target, 0, source.size());
-        target
+        OutputReadback { buffer, mapping }
     }
 
     fn read_completed_output<R>(
         &self,
-        buffer: &wgpu::Buffer,
+        readback: &OutputReadback,
         read: impl FnOnce(&[u8]) -> R,
     ) -> Result<R, OutputError> {
-        let slice = buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .map_err(|_| OutputError::GpuFailure)?;
-        rx.recv()
+        // Native poll completes this submission's mapping callbacks before
+        // returning. A concurrent polling thread may be delivering the tiny
+        // callback; receive its result without waiting for unrelated GPU work.
+        readback.mapping.recv()
             .map_err(|_| OutputError::GpuFailure)?
             .map_err(|_| OutputError::GpuFailure)?;
+        let buffer = &readback.buffer;
+        let slice = buffer.slice(..);
         let mapped = slice
             .get_mapped_range()
             .map_err(|_| OutputError::GpuFailure)?;
@@ -232,10 +243,16 @@ impl WgpuBackend {
     }
 
     fn output_storage(&self, label: &str, bytes: u64) -> wgpu::Buffer {
+        let mut usage = wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC;
+        // Match the backend's existing primary-buffer mapping policy. Devices
+        // without this optional feature retain their ordinary staging path.
+        if self.device.features().contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS) {
+            usage |= wgpu::BufferUsages::MAP_READ;
+        }
         self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: bytes,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            usage,
             mapped_at_creation: false,
         })
     }
@@ -282,5 +299,98 @@ impl WgpuBackend {
         pass.set_pipeline(&pipeline.pipeline);
         pass.set_bind_group(0, &bindings, &[]);
         pass.dispatch_workgroups(groups[0], groups[1], 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_mapping_completes_with_its_submission_and_abandoned_encoding_recovers() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::VULKAN,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
+        let adapter = match pollster::block_on(
+            instance.request_adapter(&wgpu::RequestAdapterOptions::default()),
+        ) {
+            Ok(adapter) => adapter,
+            Err(error) => {
+                assert!(std::env::var_os("SPEKTRAFILM_REQUIRE_GPU").is_none(), "{error}");
+                eprintln!("SKIP: no Vulkan adapter for output mapping test: {error}");
+                return;
+            }
+        };
+        for direct in [false, true] {
+            let mapping_feature = wgpu::Features::MAPPABLE_PRIMARY_BUFFERS;
+            if direct && !adapter.features().contains(mapping_feature) {
+                eprintln!("SKIP: optional primary-buffer mapping is unavailable");
+                continue;
+            }
+            let mut descriptor = WgpuBackend::device_descriptor(&adapter);
+            descriptor.required_features.set(mapping_feature, direct);
+            let (device, queue) = pollster::block_on(adapter.request_device(&descriptor))
+                .expect("output mapping device");
+            let backend = WgpuBackend::from_device(device, queue);
+            let source = backend.output_storage("output mapping fixture", 20);
+            assert_eq!(source.usage().contains(wgpu::BufferUsages::MAP_READ), direct);
+
+            // Abandoning an encoded output must not map the buffer early and
+            // prevent a later GPU request from using it.
+            {
+                let mut encoder = backend.device.create_command_encoder(&Default::default());
+                let abandoned = backend.stage_output_readback(&mut encoder, &source);
+                assert!(matches!(abandoned.mapping.try_recv(), Err(std::sync::mpsc::TryRecvError::Empty)));
+                drop(encoder);
+                drop(abandoned);
+            }
+
+            let shader = backend.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("output mapping fixture"),
+                source: wgpu::ShaderSource::Wgsl(
+                    "@group(0) @binding(0) var<storage, read_write> result: array<u32>;\n\
+                     @compute @workgroup_size(1) fn main(@builtin(global_invocation_id) p: vec3<u32>) {\n\
+                     result[p.x] = 1048577u + p.x; }".into(),
+                ),
+            });
+            let pipeline = backend.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("output mapping fixture"),
+                layout: None,
+                module: &shader,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                cache: None,
+            });
+            let bindings = backend.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("output mapping fixture"),
+                layout: &pipeline.get_bind_group_layout(0),
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: source.as_entire_binding(),
+                }],
+            });
+            let mut encoder = backend.device.create_command_encoder(&Default::default());
+            {
+                let mut pass = encoder.begin_compute_pass(&Default::default());
+                pass.set_pipeline(&pipeline);
+                pass.set_bind_group(0, &bindings, &[]);
+                pass.dispatch_workgroups(5, 1, 1);
+            }
+            let readback = backend.stage_output_readback(&mut encoder, &source);
+            assert_eq!(readback.buffer == source, direct, "direct mapping must not allocate a staging copy");
+            let submitted = backend.submit([encoder.finish()]);
+            backend.device.poll(wgpu::PollType::Wait {
+                submission_index: Some(submitted),
+                timeout: Some(std::time::Duration::from_secs(30)),
+            }).expect("one output submission wait");
+            readback.mapping.try_recv()
+                .expect("this submission's mapping callback must already have run")
+                .expect("output mapping");
+            let mapped = readback.buffer.slice(..).get_mapped_range().unwrap();
+            assert_eq!(bytemuck::cast_slice::<u8, u32>(&mapped), &[1048577, 1048578, 1048579, 1048580, 1048581]);
+            drop(mapped);
+            readback.buffer.unmap();
+        }
     }
 }

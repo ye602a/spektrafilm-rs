@@ -1,5 +1,44 @@
 # Engine validation
 
+## Runtime-cost review (2026-11-13)
+
+The performance follow-up to `014cff45a565d2fc2167d024bd1044ec602cacf1`
+removes temporary dependency keys on density hits, skips unused front-pass
+preparation/uploads, and schedules CPU output mapping on the final submission.
+Hosts can retain cooperative cancellation stages and append calibrated output
+to the same final encoder. Kernels, profiles and calibration tables are unchanged.
+
+The final local math/model/core/GPU library and integration suite passed **129
+tests**, with the opt-in IIR qualification excluded from that count. This used
+Rust 1.100.0, wgpu 30.0.1, system OpenBLAS and Mesa 25.0.7 llvmpipe Vulkan
+(LLVM 19.1.7), requiring an actual Vulkan device. Five cooperative-submission
+regressions cover cancellation, completed-negative reuse, cache invalidation and
+unchanged output. The detailed halation/DIR case compares all **12,589,056 f32
+channels** bit-for-bit between whole and staged submissions. The output-mapping
+regression exercises staging and direct mapping, including an abandoned encoder.
+Separately compiled prior-main and candidate migration probes also matched all
+eight cases and **5,952 f32 values** byte-for-byte after checking identical
+inputs and resolved parameters.
+
+A separate CPU microbenchmark compared the frozen prior cache implementation
+with the new one using Portra 400 / Endura, 1600×1000 input, auto exposure off,
+DIR and multilayer grain enabled. On an AMD EPYC 9V74, Linux/glibc 2.41 and Rust
+release optimization, the median of seven warmed batches of 1,000 lookups was:
+
+| Spectral method | Prior hit, µs | Current hit, µs | Prior hit allocations | Current hit allocations |
+| --- | ---: | ---: | ---: | ---: |
+| Mallett 2019 | 5.19 | 3.89 | 12 | 0 |
+| Hanatos 2025 | 145.17 | 27.92 | 16 | 0 |
+| Arctic 2026 alpha 02 | 144.44 | 30.18 | 16 | 0 |
+
+Allocation counting was separate from timing. The Hanatos/Arctic prior hit
+requested 2,097,120 cumulative allocation bytes; the current hit requests none.
+Misses use one sized allocation. Hanatos/Arctic misses fell from approximately
+127 µs to 27 µs; the small Mallett miss rose from 5.08 µs to 5.56 µs. Disabled or
+over-budget requests do not build or compare table keys. These are local cache
+CPU measurements, not full-render timings or a claim about dedicated-GPU speed.
+No performance threshold or per-frame benchmark is added to the runtime or CI.
+
 ## Boundary review (2026-11-13)
 
 The follow-up review adds checks for malformed resident input, nonempty metering
@@ -119,10 +158,13 @@ The comparator rejects changed inputs or parameters before reporting parity.
 Small synthetic images and software Vulkan establish the tested numerical and
 ownership behavior. They do not establish production-image acceptance,
 dedicated-hardware results, real window interaction or device recovery.
-Cancellation regressions cover rejection before submission and cancellation
-raised by the submitted command's completion callback. The latter confirms that
+Default `WholeChain` cancellation regressions cover rejection before submission
+and cancellation raised by the submitted command's completion callback. The latter confirms that
 destination writes can already have executed while the request still returns an
 error and publishes no density; a subsequent successful render recovers. It does
 not establish interruption of GPU execution or device-loss recovery.
+`CooperativeStages` separately verifies that a completed immutable negative can
+be retained after cancellation or output failure, while an incomplete negative
+cannot. Cache clear/disable and superseding publication tickets still apply.
 Destinations may be published only after the whole render succeeds. Host adoption
 follows the [compatibility checks](FPW_PARITY_MIGRATION_PLAN.md).

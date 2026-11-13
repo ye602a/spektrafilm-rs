@@ -387,8 +387,9 @@ impl PhysicalOutputV1 {
     }
 
     /// Complete a full physical render and its calibrated output on the same
-    /// encoder. This wrapper preserves detailed encoding errors while ensuring
-    /// they abort the backend's output/density publication commit boundary.
+    /// final encoder. Detailed encoding errors abort final output publication.
+    /// With cooperative submission, an already completed negative may remain
+    /// cached independently of a later output error.
     pub fn render(
         &self,
         backend: &WgpuBackend,
