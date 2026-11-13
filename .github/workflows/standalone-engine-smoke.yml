@@ -1,0 +1,28 @@
+name: Standalone RS smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-engine:
+    name: Windows standalone engine/API
+    runs-on: windows-latest
+    steps:
+      - name: Check out independent RS
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check standalone crates and applications
+        run: cargo check --locked -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core -p spektrafilm-gpu -p spektrafilm-cli -p spektrafilm-gui
+
+      - name: Check and exercise host device boundary
+        run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
