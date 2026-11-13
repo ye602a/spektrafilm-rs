@@ -1,4 +1,6 @@
 target/
+/dist/
+/artifacts/
 __pycache__/
 *.pyc
 .DS_Store
@@ -16,3 +18,11 @@ AGENTS.md
 /*.tif
 /*.tiff
 /*.jpg
+
+# Local configuration and diagnostic files.
+.env
+.env.*
+!.env.example
+*.log
+*.tmp
+.venv/

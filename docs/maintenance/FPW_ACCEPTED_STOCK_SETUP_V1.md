@@ -1,21 +1,14 @@
-# FPW accepted stock setup v1
+# Versioned stock setup
 
-Date: 2026-11-13. Contract identifier: `fpw-accepted-stock-v1`.
-
-FPW is the primary product driving this compatibility contract. RS owns the
-film-engine constants so an FPW dependency update can consume one maintained
-implementation. The public engine can also be used independently. No generic
-preset framework or replacement visual style is introduced.
+Contract identifier: `fpw-accepted-stock-v1`. This opt-in contract preserves
+accepted film-engine constants and their initialization order.
 
 ## Exact source and scope
 
-The stock constants and their ordering come from
-[`Engine::configure_pipeline` in FPW](https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/film.rs),
-revision `ae3428acd98e39c48784a79dc8f3369ab1236cb1`, Git blob
-`ba88953cafe93cbc1eedf0c2582ec19a34ba57f3`. This extraction retains that source
-attribution under the RS repository's GPL-3.0 license. Existing film-profile,
-spectral-data and upstream implementation notices remain unchanged. No FPW UI,
-catalog, application worker, recipe object or private photographic asset is copied.
+The constants and ordering originate in FPW's `film.rs` at revision
+`ae3428acd98e39c48784a79dc8f3369ab1236cb1`, Git blob
+`ba88953cafe93cbc1eedf0c2582ec19a34ba57f3`, retained under GPL-3.0. Existing
+film-profile, spectral-data and upstream notices remain unchanged.
 
 `AcceptedStockSetup::FpwV1(StockRoute::{Paper, Slide, NegativeScan})` explicitly
 selects these existing stock defaults. `Pipeline::new_with_spectral_and_stock_setup`
@@ -26,8 +19,7 @@ reports it. Existing `Pipeline::new`, `new_with_spectral`, and
 The selection covers **stock setup only**. The host still supplies its accepted
 exposure, grain controls, source sampling and output-route parameters. In
 particular, selecting `Slide` or `NegativeScan` here does not set `io.scan_film`,
-color spaces, transfer functions, scanner inversion, or a complete FPW recipe.
-The existing separate negative-scan transport is not a new wide-gamut migration.
+color spaces, transfer functions, scanner inversion, or a complete output route.
 
 ## Preserved branches
 
@@ -80,7 +72,7 @@ calibrated pipelines includes the setup version and route in that pipeline's key
 
 The GPU density key already covers the prepared halation and DIR parameters.
 The accepted values therefore participate in RS's existing exact stage-dependency
-comparison without a duplicate FPW invalidation table. Merely changing a version
+comparison without a duplicate host invalidation table. Merely changing a version
 label while producing identical prepared physics does not require a different
 physical negative; the constructor/profile lifecycle remains the host boundary.
 
@@ -94,8 +86,6 @@ parameters, Hanatos LUT bits, enlarger illumination, preflash and print exposure
 calibration. They also verify unchanged ordinary constructors and runtime updates
 for Provia, Velvia and B&W Double-X.
 
-These are implementation and calibration parity checks. The frozen six-photo
-FPW comparison, host recipe integration, RTX/AMD execution and real editing
-interaction gates remain in [FPW_PARITY_MIGRATION_PLAN.md](FPW_PARITY_MIGRATION_PLAN.md).
-FPW itself is unchanged during this extraction. Any later visual retuning must
-receive a new contract version and its own acceptance evidence.
+These are implementation and calibration checks. Host adoption follows the
+[compatibility plan](FPW_PARITY_MIGRATION_PLAN.md). Visual retuning requires a
+new contract version and fresh acceptance evidence.

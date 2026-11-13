@@ -1,5 +1,5 @@
 param(
-    [string]$IconSource = "C:\Users\syntxbench\Downloads\photo_2026-06-10_17-59-14.jpg",
+    [string]$IconSource = "assets\spektrafilm-icon.jpg",
     [string]$BuildTargetDir = "target\windows-app",
     [string]$DistDir = "dist\spektrafilm-windows-cuda",
     [switch]$Aio
@@ -327,6 +327,7 @@ On first launch it extracts the embedded payload to:
 
 Backends:
 - Default launch uses WGSL/wgpu when available, then CPU.
+- Current engine qualification covers Vulkan; other GPU backends are not part of that validation.
 - Set SPEKTRAFILM_BACKEND=cuda to request native CUDA on NVIDIA systems.
 "@ | Set-Content -Encoding UTF8 (Join-Path $DistDir "README.txt")
 
@@ -353,6 +354,8 @@ Backends:
         Write-Host "Packaged: $(Resolve-Path -LiteralPath $DistDir)"
         Write-Host "Icon:     $(Resolve-Path -LiteralPath $iconPath)"
     }
+
+    Copy-Item -LiteralPath "LICENSE", "SPEKTRAFILM_DATA_LICENSE.txt" -Destination $DistDir
 } finally {
     Pop-Location
 }

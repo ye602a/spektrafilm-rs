@@ -1,9 +1,9 @@
-"""Compare Python vs Rust spektrafilm on a DNG.
+"""Generate Python reference files for a manual Rust comparison.
 
 Step 1: decode DNG via rawpy → linear ACES (Python) and write a
 downsampled linear-ACES 32-bit float TIFF that both impls can consume.
 Step 2: run Python simulate on that TIFF.
-Step 3: print a note for the Rust caller to render the same TIFF.
+Step 3: print the input contract for the Rust caller to render the same TIFF.
 
 Usage:
   python spektra_compare.py <raw.dng> <out_dir> [film] [paper] [max_dim]
@@ -27,7 +27,7 @@ def downsample(img: np.ndarray, max_dim: int) -> np.ndarray:
         return img
     new_w = int(w / scale)
     new_h = int(h / scale)
-    # Simple area-average via Pillow with 32-bit float pivot.
+    # Lanczos resize via Pillow with a 32-bit float pivot.
     arr = (img.clip(0.0) * 1e3).astype(np.float32)
     out = np.zeros((new_h, new_w, 3), dtype=np.float32)
     for c in range(3):
@@ -91,10 +91,15 @@ def main():
     out_path = out_dir / f"py_{film}.png"
     Image.fromarray(arr8).save(out_path)
     print(f"[py] saved {out_path}", flush=True)
-    print(f"\nNow render the same TIFF with Rust:", flush=True)
+    print("\nFor a Rust comparison, render this exact TIFF with:", flush=True)
     print(
-        f"  cargo run --release -p spektrafilm-cli -- process {tiff_path} "
-        f"--output {out_dir}/rs_{film}.png --film {film}",
+        f"  film={film}, paper={paper}, input_color_space=ACES2065-1, "
+        "input_cctf_decoding=false",
+        flush=True,
+    )
+    print(
+        "Match exposure, effects, calibration, precision and output settings "
+        "before comparing; see scripts/parity/README.md.",
         flush=True,
     )
 

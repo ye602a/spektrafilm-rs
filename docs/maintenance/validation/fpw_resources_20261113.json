@@ -2,7 +2,6 @@
   "schema_version": 1,
   "contract_id": "fpw-bundled-physical-resources-v1",
   "audit_date": "2026-11-13",
-  "fpw_repository": "https://github.com/ye602a/fursuit-photo-workflow",
   "fpw_commit": "ae3428acd98e39c48784a79dc8f3369ab1236cb1",
   "rs_existing_resource_baseline_commit": "7994b672593c2b8eab697b3d51f22b797dd1cc0d",
   "source_pin_path": "native/vendor/spektrafilm/data/RESOURCE_PIN.json",
@@ -34,43 +33,21 @@
   "source_evidence": [
     {
       "path": "native/vendor/spektrafilm/data/RESOURCE_PIN.json",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/vendor/spektrafilm/data/RESOURCE_PIN.json",
       "git_blob_sha1": "05ca0d2cc7fccb6514b489902082ff494326bb18",
       "sha256": "abda878190fa8eedfdd7f7463c65192819d07040871090794075f7259e4e522d"
     },
     {
       "path": "native/vendor/spektrafilm/FPW_SOURCE.json",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/vendor/spektrafilm/FPW_SOURCE.json",
       "git_blob_sha1": "200c2c49f4b2bceea5207736f2f1e5020906a62d",
       "sha256": "e4ed54476cc7a47588f648bef70dbc9593c792f761761f392556edf7449cce81"
     },
     {
       "path": "native/crates/fpw-runtime/src/look_data/PROVENANCE.md",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/look_data/PROVENANCE.md",
       "git_blob_sha1": "ce2f08eb80f494634cc5617735b8b6e89635559d",
       "sha256": "828dfbaa3d20cd6f9e5da1f88f2981254b833d3c1b73e2a78c267e7f27853d66"
     },
     {
-      "path": "native/crates/fpw-runtime/src/look_data/catalog.json",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/look_data/catalog.json",
-      "git_blob_sha1": "7c409b2c5dba3f7c8424142db6c7adc59d21badd",
-      "sha256": "dcdb0b5ed5b534e0a541f08c6a55853731b160dc6bdc63a2e85d4caaa350fd3a"
-    },
-    {
-      "path": "native/crates/fpw-runtime/src/images.rs",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/images.rs",
-      "git_blob_sha1": "1764d528f4141a1edbbbbcbf595dd5d4cda43683",
-      "sha256": "712b57ef35dc77a9824bf70e971603ebeffece576e6e24ca676fb55428a8ebd4"
-    },
-    {
-      "path": "tools/native/Initialize.ps1",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/tools/native/Initialize.ps1",
-      "git_blob_sha1": "88c10250e34db49ecc7c8ce3eb55788ffe106c6e",
-      "sha256": "11dfacd0a67c1f4d6352a79754412dc19d6996889c87822337361ead426f7d92"
-    },
-    {
       "path": ".gitattributes",
-      "url": "https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/.gitattributes",
       "git_blob_sha1": "dfdb4c700e78e0ae41ee59a942ac106baee9617a",
       "sha256": "8d8feefa369c78f4cf8aff95002412b583954fe8ff09321d28b8c5c2df2eca48"
     }
@@ -961,63 +938,17 @@
   ],
   "host_owned_output_resource": {
     "path": "sRGB.icc",
-    "fpw_path": "native/vendor/spektrafilm/data/sRGB.icc",
     "fpw_pin_sha256": "f869f25625302eef46cd74fe56ec11adbfa7cf20db6f70b8efdddcbeec4323a0",
     "fpw_git_blob_sha1": "f0e82d06cb32ba25e7b82ca93d5c2d64b645734f",
     "fpw_bytes": 588,
     "raw_bytes_fetched_or_rehashed": false,
     "rs_path": null,
-    "status": "FPW-owned JPEG ICC resource; excluded from the shared engine contract and not copied into RS.",
-    "use_evidence": "native/crates/fpw-runtime/src/images.rs export calls encoder.set_icc_profile using engine_resources/sRGB.icc."
+    "status": "Host-owned output ICC resource; excluded from the shared engine contract and not copied into RS."
   },
-  "external_digital_lut_references": [
-    {
-      "mode": "PROVIA",
-      "declared_sha256": "a1fb0cb782aee11c7028003f74bc13a38e670fd604afc75081cfb3afe21a5a95",
-      "contract": "official_flog2c_rec709_gamma24_assumption_v1",
-      "payload_verified": false,
-      "scope": "FPW digital look, not this physical engine resource set"
-    },
-    {
-      "mode": "Velvia",
-      "declared_sha256": "309e20256431ef9d27afcde147287ab8d89dcba11fc1f57d8621496f27488c8b",
-      "contract": "official_flog2c_rec709_gamma24_assumption_v1",
-      "payload_verified": false,
-      "scope": "FPW digital look, not this physical engine resource set"
-    },
-    {
-      "mode": "ASTIA",
-      "declared_sha256": "3d97725207307ab88fd3cf3680745b257f11f8fb9bc17c4a72f1e725f65792d7",
-      "contract": "official_flog2c_rec709_gamma24_assumption_v1",
-      "payload_verified": false,
-      "scope": "FPW digital look, not this physical engine resource set"
-    },
-    {
-      "mode": "CC",
-      "declared_sha256": "0facba9d21fd9cf8e4f5115c539d313345f70a10fc226a966871b1307e6e2b70",
-      "contract": "official_flog2c_rec709_gamma24_assumption_v1",
-      "payload_verified": false,
-      "scope": "FPW digital look, not this physical engine resource set"
-    },
-    {
-      "mode": "NC",
-      "declared_sha256": "e2258ae8ec0adff65b193e4ae9effa598e4818e9264ff3512118d0868c2c6b14",
-      "contract": "official_flog2c_rec709_gamma24_assumption_v1",
-      "payload_verified": false,
-      "scope": "FPW digital look, not this physical engine resource set"
-    },
-    {
-      "mode": "NN",
-      "declared_sha256": "63aaaf2c6a8e7451e79b136179562a470f289c98adaac43b5bbc03369b919f80",
-      "contract": "abpy_direct_srgb_v1",
-      "payload_verified": false,
-      "scope": "FPW digital look, not this physical engine resource set"
-    }
-  ],
   "unverified_scope": [
-    "The active FPW runtime-config.json and actual installed engine_resources directory were not available. Config::load binds engine_contract to the declared RESOURCE_PIN mapping but does not rehash all physical resource payloads.",
-    "The original full Pro400H/X-Tra research calibration source files and INTEGRATION_REFERENCES.json were not available. Their provenance-reported hashes are recorded without treating them as profile or extracted-array hashes.",
-    "External digital LUT payloads, private test photographs and actual Windows/RTX host interaction were not inspected or accepted by this resource audit.",
-    "Identical resource bytes do not by themselves qualify changed algorithms, host recipe transport, cache lifecycle or the frozen six-photo FPW comparison."
+    "The active host runtime configuration and actual installed engine resource directory were not available. This audit verifies the pinned repository resources.",
+    "The original full Pro400H/X-Tra research calibration sources and derivation metadata were not available. Their provenance-reported hashes are recorded without treating them as profile or extracted-array hashes.",
+    "External host output assets, private validation photographs and application interaction were not inspected or accepted by this resource audit.",
+    "Identical resource bytes do not by themselves qualify changed algorithms, host parameter mapping, cache lifecycle or visual acceptance."
   ]
 }

@@ -1,11 +1,9 @@
 # GPU output, RGB16 and display-region contract
 
-Date: 2026-11-13. Scope: the independently maintained RS engine only.
-
 ## Provenance and unchanged physical rendering
 
-The output kernels come from the accepted FPW vendor route at
-[`ae3428acd98e39c48784a79dc8f3369ab1236cb1`](https://github.com/ye602a/fursuit-photo-workflow/tree/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/vendor/spektrafilm).
+The output kernels preserve the FPW engine snapshot at
+`ae3428acd98e39c48784a79dc8f3369ab1236cb1`.
 The migrated files retain their exact Git blob identities:
 
 | RS file | FPW Git blob |
@@ -41,7 +39,7 @@ full source RGB channel count also bounds the shader's integer row-major index
 and sample-count products; its crop scaling itself uses f32 arithmetic.
 
 At 1:1, the shader copies the original f32 samples exactly. Reduction preserves
-FPW's existing discrete area-block rule: each output pixel covers integer
+the existing discrete area-block rule: each output pixel covers integer
 source samples between the ceiling of its scaled start and end coordinates.
 The shader first converts those samples to RGB16 code values, averages them,
 rounds the average and expresses it as f32 divided by 65535. This is neither a
@@ -88,7 +86,7 @@ notification. `run_film_chain_region`, `run_film_chain_rgb16`, and
 available. `Pipeline::with_resident_params` supplies the same prepared physical
 parameters without duplicating pipeline construction in the host.
 
-## Independent checks and remaining FPW acceptance
+## Validation
 
 `cargo test --locked -p spektrafilm-gpu --test output_kernels` executes both
 production shaders and checks:
@@ -121,6 +119,5 @@ buffer, no density is published, and a later successful render recovers and
 caches normally. It is not evidence of interruption during an in-flight GPU
 submission. Submitted completion/cancellation needs its own backend test.
 
-These small deterministic full-chain cases do not replace the frozen
-six-photo FPW parity qualification on the same hardware and driver. Do not
-switch FPW's engine pin based solely on software Vulkan success.
+These small deterministic cases do not replace target-device and host-image
+acceptance. See [VALIDATION.md](VALIDATION.md) for the recorded test scope.

@@ -1,8 +1,7 @@
 # Developed-negative density cache
 
-2026-11-13. RS owns the cache boundary and every film-stage dependency. This is
-an opt-in extension to the independently maintained engine. FPW remains a read-only
-reference during this migration; its engine pin is unchanged.
+The optional cache reuses developed film density while RS owns the stage
+boundary, exact dependencies and publication rules.
 
 ## Stored stage and unchanged rendering
 
@@ -84,8 +83,8 @@ entry does not invalidate handles already held by in-flight readers. No request
 writes to the cached buffer, including after another request changes the source.
 
 The cache is scoped to one `WgpuBackend` and its device. A new backend/device
-starts empty; entries cannot cross devices. No FPW assumption of one serialized
-render worker is required.
+starts empty; entries cannot cross devices. Overlapping calls do not require
+a serialized host render worker.
 
 ## Validation and remaining gates
 
@@ -116,17 +115,16 @@ SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-core -p spektrafilm
 GPU cancellation during in-flight submissions and output consumption requires the
 shared render/output lifecycle regression in addition to this pre-cancel test.
 
-Before FPW cutover, replay the frozen six-photo baseline and resource/cancellation
-checks documented in `FPW_PARITY_MIGRATION_PLAN.md`. Software Vulkan regression
-does not establish those RTX/photo qualifications. No speed improvement is claimed
-until controlled repeated measurements include key construction, GPU copies,
-memory occupancy and the actual print/scan edit workloads.
+Software Vulkan regression does not replace target-device and host-image
+acceptance. Performance measurements must include key construction, GPU copies,
+memory occupancy and actual print/scan edit workloads. See the
+[compatibility plan](FPW_PARITY_MIGRATION_PLAN.md).
 
 ## Provenance
 
 The stage boundary and one-plane retention follow FPW's accepted vendored route,
 pinned to `ae3428acd98e39c48784a79dc8f3369ab1236cb1`,
-`native/vendor/spektrafilm/crates/spektrafilm-gpu/src/wgpu_backend.rs`
+`wgpu_backend.rs`
 (blob `934e80eb47aa5bf58fa80ee2bc9c4037fe14d459`). The independent RS key and
 publication controller replace that host's `input_unchanged` boolean with
 engine-owned exact dependencies and per-request concurrency rules.

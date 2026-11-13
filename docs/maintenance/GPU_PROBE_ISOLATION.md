@@ -1,10 +1,9 @@
 # Same-device probes without disturbing photo caches
 
-FPW measures its physical medium with a small synthetic neutral ramp on the
-existing render worker and GPU device. That measurement must leave the current
-photograph's negative-density snapshot and idle work planes available. This is a
-specific FPW integration requirement; it does not change film physics, output
-color spaces, or how FPW decides when to run and display a measurement.
+Synthetic measurement probes can share the rendering device without evicting
+a photograph's negative-density snapshot or idle work planes. Isolation changes
+resource ownership, while the caller retains control of measurement parameters
+and scheduling.
 
 ## Per-call contract
 
@@ -55,24 +54,11 @@ probe allocations are transient, just like other in-flight allocations, and
 remain subject to the normal image validation and device limits. Cached shader
 pipelines may be compiled by probes and are deliberately shared.
 
-## FPW reference and migration
+## Compatibility
 
-The frozen reference is FPW commit
-`ae3428acd98e39c48784a79dc8f3369ab1236cb1`:
-
-- [`native/crates/fpw-runtime/src/latitude.rs`, `measure_medium`](https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/latitude.rs#L78-L101)
-  wraps its 1024-by-8 ramp in the vendor backend's `with_probe_images`.
-- [`native/vendor/spektrafilm/crates/spektrafilm-gpu/src/wgpu_backend.rs`, `with_probe_images`](https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/vendor/spektrafilm/crates/spektrafilm-gpu/src/wgpu_backend.rs#L143-L161)
-  temporarily takes both shared caches and restores them with a drop guard. Its
-  own contract requires a serialized worker. That shared-state mechanism is not
-  used in RS, whose backend also accepts overlapping calls.
-- [`latitude_probe_reuses_device_and_preserves_photo_planes`](https://github.com/ye602a/fursuit-photo-workflow/blob/ae3428acd98e39c48784a79dc8f3369ab1236cb1/native/crates/fpw-runtime/src/latitude.rs#L165-L189)
-  establishes the required cache preservation and next-photo equality.
-
-When FPW switches its engine dependency, replace the old callback wrapper with
-this per-call option on the same existing backend. Keep FPW's measurement cache,
-point-response setup, cancellation source, and UI revision checks with their
-current owners. This change alone does not switch FPW's pin or alter any FPW file.
+The request-local option preserves the cache-isolation behavior of the reference
+engine at `ae3428acd98e39c48784a79dc8f3369ab1236cb1`. Unlike temporarily removing
+and restoring global caches, it also supports overlapping and nested calls.
 
 ## Executable regression
 
@@ -103,5 +89,5 @@ SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked \
 
 `SPEKTRAFILM_REQUIRE_GPU=1` makes lack of a GPU a failure instead of a skipped
 success. Software Vulkan validates the real command submission, buffer lifetime,
-and pixel behavior here; the FPW Windows/shared-surface and frozen-photo gates
-remain separate integration checks.
+and pixel behavior here. Real surface interaction and host image acceptance
+remain separate integration checks; see [VALIDATION.md](VALIDATION.md).

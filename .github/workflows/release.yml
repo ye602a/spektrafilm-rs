@@ -41,13 +41,14 @@ jobs:
           Copy-Item target\release\spektrafilm.exe $dist\
           Copy-Item target\release\spektrafilm-f64.exe $dist\
           Copy-Item -Recurse data $dist\data
+          Copy-Item LICENSE, SPEKTRAFILM_DATA_LICENSE.txt $dist\
           @"
           spektrafilm-rs Windows x64
 
           Run spektrafilm-gui.exe for the GUI.
 
           Backends:
-          - WGSL/wgpu works on normal GPU drivers.
+          - The validated film-compute path uses Vulkan; GPU availability depends on the driver and build.
           - CUDA mode is selected with SPEKTRAFILM_BACKEND=cuda and requires an NVIDIA GPU plus the CUDA NVRTC runtime available on the system.
 
           f64 export:
@@ -69,7 +70,7 @@ jobs:
           files: dist/spektrafilm-windows-x64.zip
 
   macos:
-    name: macOS
+    name: macOS experimental package
     runs-on: macos-latest
 
     steps:
