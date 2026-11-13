@@ -119,6 +119,33 @@ impl WgpuBackend {
             force_fallback_adapter: false,
         }))?;
 
+        // Use the same requirements for internally and externally created devices.
+        let adapter_info = adapter.get_info();
+        let (device, queue) = pollster::block_on(
+            adapter.request_device(&Self::device_descriptor(&adapter), None),
+        )
+        .ok()?;
+
+        tracing::info!(
+            adapter = adapter_info.name,
+            backend = ?adapter_info.backend,
+            "wgpu backend initialized"
+        );
+
+        Some(Self::from_device(device, queue))
+    }
+
+    /// Device requirements for host applications embedding this compute engine.
+    ///
+    /// Hosts can request the wgpu device using this descriptor and pass the
+    /// matching device/queue to `from_device`. This keeps the engine's
+    /// storage limits and optional integrated-GPU mapping capability in one
+    /// place, instead of duplicating them in the host application.
+    ///
+    /// A device requested with weaker limits may fail later during film
+    /// processing; callers should use this method at device creation time.
+    /// Requesting this descriptor does not allocate any GPU resources.
+    pub fn device_descriptor(adapter: &wgpu::Adapter) -> wgpu::DeviceDescriptor<'static> {
         // The default `Limits` cap storage buffer bindings at 128 MB,
         // which a 6-channel ≥ 14 MP image exceeds (image_bytes =
         // width × height × 3 × 4). Bump every relevant limit up to the
@@ -151,24 +178,12 @@ impl WgpuBackend {
         } else {
             wgpu::Features::empty()
         };
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("spektrafilm"),
-                required_features: opt_feats,
-                required_limits: limits,
-                memory_hints: wgpu::MemoryHints::Performance,
-            },
-            None,
-        ))
-        .ok()?;
-
-        tracing::info!(
-            adapter = adapter_info.name,
-            backend = ?adapter_info.backend,
-            "wgpu backend initialized"
-        );
-
-        Some(Self::from_device(device, queue))
+        wgpu::DeviceDescriptor {
+            label: Some("spektrafilm"),
+            required_features: opt_feats,
+            required_limits: limits,
+            memory_hints: wgpu::MemoryHints::Performance,
+        }
     }
 
     /// Wrap a host-owned wgpu device and its matching queue for film computation.
