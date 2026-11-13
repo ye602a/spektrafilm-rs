@@ -1,0 +1,37 @@
+name: WGPU30 migration branch validation
+
+on:
+  push:
+    branches:
+      - feat/wgpu30-compute-backend
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve dependencies and check standalone crates
+        shell: pwsh
+        run: |
+          cargo check -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core -p spektrafilm-gpu -p spektrafilm-cli -p spektrafilm-gui
+          $buildCode = $LASTEXITCODE
+          if (git status --short -- Cargo.lock) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- Cargo.lock
+            git commit -m "build(lock): resolve standalone wgpu 30 dependencies"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git push origin HEAD:refs/heads/feat/wgpu30-compute-backend
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          exit $buildCode
+
+      - name: Check embedded GPU API tests
+        run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
