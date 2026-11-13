@@ -1531,7 +1531,10 @@ impl eframe::App for App {
             i.raw
                 .dropped_files
                 .iter()
-                .filter_map(|f| f.path().map(|p| p.to_path_buf()))
+                .filter_map(|f| {
+                    let path = f.path();
+                    (!path.as_os_str().is_empty()).then(|| path.to_path_buf())
+                })
                 .collect()
         });
         if let Some(path) = dropped.into_iter().next() {
