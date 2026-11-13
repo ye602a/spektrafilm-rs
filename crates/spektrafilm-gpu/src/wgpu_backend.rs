@@ -124,11 +124,43 @@ impl GrainReference {
     }
 }
 
+/// At most one idle pair of full-resolution GPU work planes is kept.
+/// Active jobs check out the pair exclusively; simultaneous jobs allocate
+/// separate buffers rather than reusing an in-flight image.
+#[cfg(feature = "wgpu-backend")]
+struct WorkImages {
+    a: wgpu::Buffer,
+    b: wgpu::Buffer,
+}
+
+#[cfg(feature = "wgpu-backend")]
+struct WorkImageCache {
+    enabled: bool,
+    generation: u64,
+    max_bytes: u64,
+    available: Option<WorkImages>,
+}
+
+#[cfg(feature = "wgpu-backend")]
+impl Default for WorkImageCache {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            generation: 0,
+            // Covers the two 3xf32 work planes up to roughly 60 MP,
+            // while avoiding unbounded idle allocations on very large scans.
+            max_bytes: 1536 * 1024 * 1024,
+            available: None,
+        }
+    }
+}
+
 #[cfg(feature = "wgpu-backend")]
 pub struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
     grain_reference: Option<GrainReference>,
+    work_images: std::sync::Mutex<WorkImageCache>,
     /// Cache compiled compute pipelines keyed by shader source pointer.
     /// `&'static str` is fine because all our shader sources come from `include_str!`.
     pipeline_cache: std::sync::Mutex<std::collections::HashMap<usize, CachedPipeline>>,
@@ -246,6 +278,7 @@ impl WgpuBackend {
             device,
             queue,
             grain_reference: None,
+            work_images: std::sync::Mutex::new(WorkImageCache::default()),
             pipeline_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -257,6 +290,82 @@ impl WgpuBackend {
     /// for concurrent independent requests.
     pub fn configure_grain_reference(&mut self, reference: Option<GrainReference>) {
         self.grain_reference = reference;
+    }
+
+    /// Enable/disable retaining two idle image-sized GPU work buffers.
+    ///
+    /// Retention is opt-in and allocation-only: every invocation overwrites
+    /// the input plane. Integrated GPU direct MAP_WRITE/MAP_READ stays intact,
+    /// and concurrently executing renders never check out the same pair.
+    pub fn configure_work_images(&self, enabled: bool) {
+        let mut cache = self.work_images.lock().unwrap();
+        if cache.enabled != enabled {
+            cache.generation = cache.generation.wrapping_add(1);
+        }
+        cache.enabled = enabled;
+        if !enabled {
+            cache.available = None;
+        }
+    }
+
+    /// Idle GPU work-buffer cap in bytes; default 1.5 GiB total for both
+    /// planes. A cap of zero prevents idle retention without disabling renders.
+    pub fn configure_work_image_budget_bytes(&self, max_bytes: u64) {
+        let mut cache = self.work_images.lock().unwrap();
+        if cache.max_bytes != max_bytes {
+            cache.generation = cache.generation.wrapping_add(1);
+        }
+        cache.max_bytes = max_bytes;
+        if cache
+            .available
+            .as_ref()
+            .is_some_and(|v| v.a.size().saturating_add(v.b.size()) > max_bytes)
+        {
+            cache.available = None;
+        }
+    }
+
+    /// Bytes of the one *idle* retained work pair. In-flight allocations
+    /// are deliberately not counted; callers must not treat this as total VRAM.
+    pub fn work_image_bytes(&self) -> u64 {
+        self.work_images
+            .lock()
+            .unwrap()
+            .available
+            .as_ref()
+            .map_or(0, |v| v.a.size().saturating_add(v.b.size()))
+    }
+
+    fn checkout_work_images(&self, image_bytes: u64, mappable: bool) -> (Option<WorkImages>, u64) {
+        let mut cache = self.work_images.lock().unwrap();
+        let generation = cache.generation;
+        if !cache.enabled || mappable || image_bytes.saturating_mul(2) > cache.max_bytes {
+            cache.available = None;
+            return (None, generation);
+        }
+        let pair = cache.available.take().filter(|v| {
+            v.a.size() == image_bytes && v.b.size() == image_bytes
+        });
+        (pair, generation)
+    }
+
+    fn release_work_images(
+        &self,
+        a: wgpu::Buffer,
+        b: wgpu::Buffer,
+        generation: u64,
+        mappable: bool,
+    ) {
+        if mappable {
+            return;
+        }
+        let mut cache = self.work_images.lock().unwrap();
+        let bytes = a.size().saturating_add(b.size());
+        if cache.enabled && cache.generation == generation && bytes <= cache.max_bytes {
+            // The current render has completed its readback/unmap before this
+            // point. Another render may check out the buffers only afterwards.
+            cache.available = Some(WorkImages { a, b });
+        }
     }
 
     /// Borrow the GPU handles used by this backend.
@@ -887,6 +996,8 @@ impl WgpuBackend {
             .device
             .features()
             .contains(wgpu::Features::MAPPABLE_PRIMARY_BUFFERS);
+        let (work_pair, work_generation) =
+            self.checkout_work_images(img_bytes as u64, mappable);
 
         // buf_a is the input/ping-pong buffer. The dominant per-frame cost was
         // the input upload: `queue.write_buffer` stages CPU→GPU through a slow
@@ -894,7 +1005,12 @@ impl WgpuBackend {
         // MAPPABLE_PRIMARY_BUFFERS we create buf_a already mapped (MAP_WRITE)
         // and memcpy the input straight into its (shared) memory — no staging.
         let input_f32 = scalars_to_f32(&image.data);
-        let buf_a = if mappable {
+        let buf_a = if let Some(pair) = work_pair.as_ref() {
+            let buf = pair.a.clone();
+            // A reused buffer must be fully overwritten for each new image.
+            self.queue.write_buffer(&buf, 0, bytemuck::cast_slice(&input_f32));
+            buf
+        } else if mappable {
             let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("img_a"),
                 size: img_bytes as u64,
@@ -920,7 +1036,9 @@ impl WgpuBackend {
         // buf_b holds the final RGB. With MAPPABLE_PRIMARY_BUFFERS we add
         // MAP_READ so it can be mapped directly for a zero-copy readback,
         // skipping the slow Private→Shared blit on unified memory.
-        let buf_b = {
+        let buf_b = if let Some(pair) = work_pair.as_ref() {
+            pair.b.clone()
+        } else {
             let mut usage = wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC;
@@ -1747,6 +1865,8 @@ impl WgpuBackend {
         map_target.unmap();
 
         let out = ImageBuf::from_data(image.width, image.height, f32_to_scalars(out_f32));
+        // Readback is complete: only now may another render lease the pair.
+        self.release_work_images(buf_a, buf_b, work_generation, mappable);
         tracing::debug!(
             cpu_setup_ms = format!("{cpu_setup_ms:.1}"),
             gpu_wait_ms = format!("{gpu_wait_ms:.1}"),

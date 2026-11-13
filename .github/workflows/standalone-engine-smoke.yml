@@ -48,6 +48,9 @@ jobs:
       - name: Test CPU reference math and film-model crates
         run: cargo test --locked -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core --lib
 
+      - name: Compile image-reuse end-to-end GPU regression
+        run: cargo test --locked -p spektrafilm-core --test work_images --no-run
+
   linux-vulkan-software:
     name: Linux Vulkan software compute smoke
     runs-on: ubuntu-24.04
@@ -78,3 +81,6 @@ jobs:
         run: |
           cargo test --locked -p spektrafilm-gpu --lib actual_gpu_grain_follows_source_coordinates -- --nocapture
           cargo test --locked -p spektrafilm-gpu --lib actual_gpu_multilayer_moments_and_controls -- --nocapture
+
+      - name: Check GPU work buffers against full physical pipeline
+        run: cargo test --locked -p spektrafilm-core --test work_images -- --nocapture
