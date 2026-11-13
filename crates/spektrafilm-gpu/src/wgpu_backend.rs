@@ -168,11 +168,35 @@ impl WgpuBackend {
             "wgpu backend initialized"
         );
 
-        Some(Self {
+        Some(Self::from_device(device, queue))
+    }
+
+    /// Wrap a host-owned wgpu device and its matching queue for film computation.
+    ///
+    /// This does not request another adapter or create another device. Device and
+    /// queue are cloneable wgpu handles, so the caller may retain and use both.
+    ///
+    /// The caller MUST pass a queue obtained alongside this device; mismatched
+    /// device/queue pairs are invalid. The host is also responsible for
+    /// synchronizing queue submissions with surface reconfiguration or other
+    /// externally coordinated GPU operations. This constructor does not manage
+    /// the host's frame lifecycle or any application-specific cache identity.
+    ///
+    /// The backend's compiled-pipeline cache is owned by this instance.
+    pub fn from_device(device: wgpu::Device, queue: wgpu::Queue) -> Self {
+        Self {
             device,
             queue,
             pipeline_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
-        })
+        }
+    }
+
+    /// Borrow the GPU handles used by this backend.
+    ///
+    /// Useful when an application wants to share its rendering device with the
+    /// film engine. The handles remain owned by their respective wgpu objects.
+    pub fn compute_device(&self) -> (&wgpu::Device, &wgpu::Queue) {
+        (&self.device, &self.queue)
     }
 
     /// Get or compile + cache a pipeline keyed by shader source pointer.
