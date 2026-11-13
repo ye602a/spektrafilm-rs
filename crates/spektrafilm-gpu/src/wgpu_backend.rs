@@ -90,10 +90,38 @@ fn f32_to_scalars(v: Vec<f32>) -> Vec<spektrafilm_math::precision::Scalar> {
     v.into_iter().map(|x| x as f64).collect()
 }
 
+/// Source-referenced stochastic grain coordinates.
+#[cfg(feature = "wgpu-backend")]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GrainReference {
+    row_x: [f32; 4],
+    row_y: [f32; 4],
+    shape: [u32; 4],
+}
+
+#[cfg(feature = "wgpu-backend")]
+impl GrainReference {
+    /// Affine mapping from rendered pixel centers to the original image.
+    ///
+    /// matrix = [a, b, tx, c, d, ty]; width is the rendered image width.
+    /// When absent, the GPU shader preserves legacy local-index RNG exactly.
+    pub fn new(matrix: [f32; 6], source: [u32; 2], width: u32) -> Self {
+        assert!(width > 0 && source[0] > 0 && source[1] > 0, "empty grain reference");
+        assert!(matrix.iter().all(|v| v.is_finite()), "nonfinite grain transform");
+        Self {
+            row_x: [matrix[0], matrix[1], matrix[2], 0.0],
+            row_y: [matrix[3], matrix[4], matrix[5], 0.0],
+            shape: [width, source[0], source[1], 1],
+        }
+    }
+}
+
 #[cfg(feature = "wgpu-backend")]
 pub struct WgpuBackend {
     device: wgpu::Device,
     queue: wgpu::Queue,
+    grain_reference: Option<GrainReference>,
     /// Cache compiled compute pipelines keyed by shader source pointer.
     /// `&'static str` is fine because all our shader sources come from `include_str!`.
     pipeline_cache: std::sync::Mutex<std::collections::HashMap<usize, CachedPipeline>>,
@@ -204,8 +232,18 @@ impl WgpuBackend {
         Self {
             device,
             queue,
+            grain_reference: None,
             pipeline_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// Optional map from rendering coordinates to original photo coordinates.
+    ///
+    /// The default (None) preserves the original per-render random grain field.
+    /// Call this only when no render is in flight, or create a separate backend
+    /// for concurrent independent requests.
+    pub fn configure_grain_reference(&mut self, reference: Option<GrainReference>) {
+        self.grain_reference = reference;
     }
 
     /// Borrow the GPU handles used by this backend.
@@ -4987,7 +5025,10 @@ fn build_grain_state(
     let n_pixels = (width as usize) * (height as usize);
 
     let grain_pipe = backend.cached_pipeline(
-        include_str!("../../spektrafilm-shaders/wgsl/grain.wgsl"),
+        concat!(
+            include_str!("../../spektrafilm-shaders/wgsl/grain_reference.wgsl"),
+            include_str!("../../spektrafilm-shaders/wgsl/grain.wgsl")
+        ),
         &[
             wgpu::BufferBindingType::Uniform,
             wgpu::BufferBindingType::Storage { read_only: false },
@@ -5004,6 +5045,7 @@ fn build_grain_state(
         density_max: [f32; 4],
         n_particles_per_pixel: [f32; 4],
         grain_uniformity: [f32; 4],
+        reference: GrainReference,
     }
     let params = GrainParams {
         n_pixels: n_pixels as u32,
@@ -5024,6 +5066,7 @@ fn build_grain_state(
             gp.grain_uniformity[2],
             0.0,
         ],
+        reference: backend.grain_reference.unwrap_or_default(),
     };
     let params_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("grain_params"),
