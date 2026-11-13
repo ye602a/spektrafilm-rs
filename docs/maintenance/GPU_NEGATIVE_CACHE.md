@@ -30,6 +30,15 @@ lossy digest whose collision could select another negative. Equal-value objects
 at different addresses compare equal. Equivalent but differently represented
 floating-point values can conservatively miss.
 
+Disabled, unidentified and over-budget requests bypass dependency traversal.
+A hit compares the retained key directly with borrowed parameter values, without
+allocating or writing a temporary key. A miss allocates the complete key once;
+the capacity calculation reads table lengths, not a second copy of their values.
+Construction and comparison share the same field traversal. This preserves exact
+invalidation without introducing a host-side parameter hash or scanning input
+image pixels. Public parameter tables remain mutable, so a hit still compares
+their contents rather than trusting an address or an unchecked version token.
+
 | Dependency | Cached negative invalidated? | Reason |
 | --- | --- | --- |
 | Source identity, width, height, scalar layout | Yes | Defines the uploaded prepared image |
@@ -48,7 +57,7 @@ For example, changing a paper or scan route can still miss if preparation also
 changes a front-pass exposure correction. The engine detects that changed matrix
 automatically. Hosts do not maintain their own duplicate list of film parameters.
 
-`NegativeKey::new` exhaustively destructures `FilmChainParams` and each pre-print
+The key traversal exhaustively destructures `FilmChainParams` and each pre-print
 parameter structure without `..`. Adding a field requires an explicit engine-side
 classification during compilation. New stages also need an invalidation and
 image-parity regression; the compile check does not replace that review.
@@ -63,38 +72,54 @@ in-flight snapshots/clones, ordinary work buffers, LUT key storage, and other GP
 allocations; this is not a total VRAM budget.
 
 Each eligible request obtains a sequence ticket. A cache miss carries a private
-publication token. A snapshot can be published only after successful completion
-of the render, with its expected exact byte size, while its ticket is still the
-latest eligible request and the cache generation is unchanged. Thus an older
+publication token. A snapshot can be published only after its GPU writes complete,
+with its expected exact byte size, while its ticket is still the latest eligible
+request and the cache generation is unchanged. Thus an older
 concurrent render cannot replace a newer request's result. Reconfiguration,
 explicit clearing, budget changes, or a request exceeding the retention budget
 invalidate pending publication tokens. Invalid image geometry is rejected before
-cache lookup. Dropping a token after a failure or cancellation publishes nothing.
+cache lookup. Dropping an uncommitted token publishes nothing.
 
-The backend makes the final cancellation decision immediately before committing
-successful output and cache publication, after GPU consumers and any readback
-have completed. Cancellation arriving after that decision does not retroactively
-change a completed request into a cancelled one; the core must not perform a
-second cancellation decision after a successful backend return.
+The default `WholeChain` policy commits the snapshot only when the whole render
+succeeds. `CooperativeStages` can retain a completed negative at its existing
+negative-stage checkpoint, before checking for a newly raised cancellation flag.
+That immutable, exactly identified intermediate remains valid if later output is
+cancelled or its consumer fails. An incomplete negative or failed GPU completion
+cannot be published. The same generation, ticket and budget checks apply at the
+stage boundary; there is no second invalidation protocol or extra submission.
+
+Final output always requires complete render success. The backend makes the
+final cancellation decision after consumers and readback complete. A later
+cancellation does not retroactively change a successful return; the core must
+not perform another cancellation decision after that return.
 
 Hits clone an immutable buffer handle under the short cache mutex. GPU commands,
 waits and output consumption happen outside that mutex. Clearing or replacing the
 entry does not invalidate handles already held by in-flight readers. No request
 writes to the cached buffer, including after another request changes the source.
 
+On a hit, RS also skips CPU conversion and GPU upload of the unused front-pass
+LUT, film-development curves, uniforms and bind groups. Printing/scanning still
+prepare and consume their current downstream parameters. The snapshot-to-work
+copy remains necessary because downstream processing overwrites its private
+plane; the shared snapshot must stay immutable for concurrent readers.
+
 The cache is scoped to one `WgpuBackend` and its device. A new backend/device
 starts empty; entries cannot cross devices. Overlapping calls do not require
 a serialized host render worker.
 
-## Validation and remaining gates
+## Validation and limits
 
-Local validation on 2026-11-13 passed **5 CPU unit tests** and **1 complete film-chain
+Local validation on 2026-11-13 passed **7 CPU unit tests** and **1 complete film-chain
 regression on Mesa software Vulkan** with `SPEKTRAFILM_REQUIRE_GPU=1` (GPU absence
 cannot produce a skipped success). The independent CPU unit suite covers one-setting-at-a-time upstream invalidation,
 all downstream dependency families, different geometry with equal byte count,
 source and coordinate changes, exact LUT-content identity, disabled/unidentified
 calls, discarded publication tokens, reordered completion, disable/re-enable,
 budget changes, explicit clearing, and wrong-sized snapshots.
+The runtime-cost follow-up also covers borrowed comparison of NaN payloads and
+signed zero, lazy bypass/hits and single-allocation misses. Cooperative stage
+publication has five additional GPU regressions; see [VALIDATION.md](VALIDATION.md).
 
 The integrated GPU regression compares cache-on results with cache-off results
 on the same device, including repeated downstream edits, upstream exposure/gamma/
@@ -112,7 +137,7 @@ cargo test --locked -p spektrafilm-gpu --features openblas-src/system --lib nega
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-core -p spektrafilm-gpu --features openblas-src/system --test negative_cache
 ```
 
-The shared output regression also raises cancellation from the submitted command's
+The default WholeChain output regression also raises cancellation from the submitted command's
 completion callback. Its destination write has already executed, but the request
 returns an error, publishes no density, and can be retried successfully. This does
 not establish interruption of GPU execution or recovery from device loss.

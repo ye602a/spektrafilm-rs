@@ -4,7 +4,7 @@ pub use output::{DisplayRegion, OutputError, Rgb16Image};
 #[cfg(feature = "wgpu-backend")]
 pub use output::FilmOutput;
 mod render;
-pub use render::{FilmRenderOptions, SourceIdentity};
+pub use render::{FilmRenderOptions, FilmSubmissionPolicy, SourceIdentity};
 #[cfg(feature = "wgpu-backend")]
 mod negative_cache;
 #[cfg(feature = "wgpu-backend")]

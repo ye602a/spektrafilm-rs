@@ -77,8 +77,10 @@ the whole method returns `Ok`. It retains that destination, not RS's source plan
 Saving a cloned source handle, recording a later submission that reads it, or
 publishing an in-flight source plane violates the lease contract. Consumer
 recording does not require CPU readback of the full f32 image. Cancellation or
-an unsuccessful render returns an error and does not publish a density-cache
-snapshot. A cancellation detected after submission cannot retract GPU writes
+an unsuccessful render returns an error and does not publish final output. Under
+the default WholeChain policy it also publishes no density snapshot; a completed
+negative from a cooperative stage may remain reusable as described in
+[GPU_NEGATIVE_CACHE.md](GPU_NEGATIVE_CACHE.md). Cancellation after submission cannot retract GPU writes
 that already reached a host-owned destination; the caller must therefore wait
 for `Ok` before publishing it. The encoding callback itself is not a publication
 notification. `run_film_chain_region`, `run_film_chain_rgb16`, and
@@ -88,6 +90,13 @@ physical parameters without duplicating pipeline construction in the host.
 It rejects empty, overflowing or malformed RGB input before CPU metering or
 the consumer callback. The legacy `with_resident_params` keeps its `Option`
 interface and returns `None` for invalid input or an unavailable resident route.
+
+CPU output registers its buffer mapping on the final command encoder with
+`map_buffer_on_submit`. The existing wait for that submission completes both
+the writes and the mapping; collection does not issue a second device-wide wait.
+On devices already configured for `MAPPABLE_PRIMARY_BUFFERS`, regional and RGB16
+output can be mapped directly as well. Other devices retain their staging copy.
+This does not introduce CPU readback into the scoped GPU-texture route.
 
 ## Validation
 
@@ -116,12 +125,12 @@ odd-channel outputs, invalid requests, and a same-device consumer that writes
 an independently owned RGBA32F texture. That texture retains its pixels after
 the next source image reuses the engine's work buffers.
 
-The consumer-error and encoding-callback cancellation test verifies the
+The default `WholeChain` consumer-error and encoding-callback cancellation test verifies the
 **pre-submission** boundary: its recorded write never reaches the host marker
 buffer, no density is published, and a later successful render recovers and
 caches normally.
 
-A separate completion-callback regression requests cancellation after the
+A separate `WholeChain` completion-callback regression requests cancellation after the
 submitted writes finish. The host marker changes, but the request returns
 `Cancelled`, publishes no density and retains no work planes. A successful retry
 matches the ordinary output and can cache normally. This covers the completion

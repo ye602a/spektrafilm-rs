@@ -34,6 +34,34 @@ backends through Cargo feature unification. Their availability does not establis
 physical-pipeline qualification. Standalone GUI and compute currently create
 separate devices; a common dependency version alone does not establish shared-device use.
 
+## Runtime cost
+
+An ordinary Cargo dependency calls the engine in the host process. Passing
+borrowed image data, device/queue handles and output textures needs no IPC,
+serialization or intermediate CPU image. Keep resource-content verification at
+installation or an explicit resource change, and retain the accepted rendering
+contract independently of the implementation revision. A code revision alone
+does not require changing saved rendering identities when behavior is preserved.
+
+Resident requests perform constant-time image-layout/device-limit checks and
+cooperative cancellation reads. Source identity comes from the host's immutable
+prepared-input generation; RS does not hash the photograph. Density-cache hits
+compare exact parameter tables without allocating a temporary key or uploading
+the skipped front-pass LUT. Cache bypasses do not traverse those tables.
+
+For `P` input pixels and `Q` output pixels, a miss uploads `12P` bytes of f32 RGB
+(or uses the existing direct-map route). An eligible miss also captures `12P`
+bytes into a GPU density snapshot; a hit skips the input upload and copies the
+snapshot into a private GPU work plane. CPU f32 output reads `12Q` bytes and
+packed RGB16 reads approximately `6Q`; scoped GPU output reads no image back to
+the CPU. Host display/post-processing should consume those same-device textures.
+
+Ordinary calls use one submission/completion wait. Interactive hosts may select
+the existing cooperative stage policy described in
+[GPU_SUBMISSION_GATE.md](GPU_SUBMISSION_GATE.md). Keep its useful cancellation
+boundaries while appending final output to the physical encoder, so a separate
+output submission/wait is unnecessary.
+
 ## Resources and publication
 
 Work-plane reuse retains at most one idle pair. The separate negative-density

@@ -55,12 +55,33 @@ The cancelled call returns once the host releases the mutex and the engine can
 observe the flag. Commands already submitted still follow the ordinary
 completion and final-publication rules.
 
-The engine's `with_film_output` consumer is called before gate acquisition. That
-guarantee does not extend to every callback in the raw wgpu API: wgpu 30 may run
+The engine's `with_film_output` consumer is called outside the gate, before the
+final submission acquires it. Earlier cooperative stages may already have
+acquired and released the gate. This guarantee does not extend to every callback
+in the raw wgpu API: wgpu 30 may run
 previously registered `Queue::on_submitted_work_done` callbacks from inside
 `Queue::submit` itself. Such native completion callbacks should signal or enqueue
 work rather than synchronously acquire this same non-reentrant mutex. The
 engine does not add a second callback scheduler or broaden the locked section.
+
+## Submission granularity
+
+`FilmRenderOptions::submission_policy` defaults to
+`FilmSubmissionPolicy::WholeChain`: one physical-chain/output submission and
+one completion wait. Hosts that already yield the GPU to foreground work may
+select `CooperativeStages` together with a cancellation signal. A density miss
+then yields after the negative; inputs larger than 2048² pixels also retain the
+optical and DIR boundaries. The threshold selects submission granularity and
+does not reject large images.
+
+Every checkpoint submits through the same short gate, waits outside it, and
+checks cancellation before preparing further work. A completed, immutable
+negative can be retained at its existing stage boundary even when later output
+is cancelled; its exact key and the ordinary publication ticket remain required.
+Incomplete stages and unsuccessful frames are never published. With
+no cancellation signal, or a completed density hit, this policy adds no stage
+submissions. It is a responsiveness choice for the host, not a mandatory extra
+wait for all engine users.
 
 ## Compatibility
 
@@ -71,7 +92,8 @@ retains the existing two-argument API and standalone behavior.
 ## Regression
 
 `crates/spektrafilm-core/tests/submission_gate.rs` uses actual GPU command
-submission on one device and its injected handles. It verifies:
+submission on one device and its injected handles with the default `WholeChain`
+policy. It verifies:
 
 1. Both constructor signatures remain available, injected handles compare equal
    to the host's handles, and gated full-chain output equals the ungated output.
