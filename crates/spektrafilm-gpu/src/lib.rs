@@ -305,8 +305,10 @@ pub struct DirCouplersGpuParams<'a> {
 /// Mirrors `apply_grain_to_density`: per-channel n_particles_per_pixel
 /// already divided by `n_sub_layers`, density_max already includes
 /// `density_min`, etc.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GrainGpuParams {
+    /// Optional FPW-equivalent three-emulsion GPU physics. None keeps the legacy sampler.
+    pub layers: Option<LayeredGrainGpuParams>,
     pub density_min: [f32; 3],
     pub density_max: [f32; 3],
     pub n_particles_per_pixel: [f32; 3],
@@ -317,6 +319,19 @@ pub struct GrainGpuParams {
     /// One shared noise field across all channels (B&W single emulsion)
     /// instead of independent per-channel RNG streams.
     pub monochrome: bool,
+}
+
+/// Curves and particle constants for three distinct dye/emulsion layers.
+/// Prepared by the engine core, never by an FPW-specific adapter.
+#[derive(Debug, Clone)]
+pub struct LayeredGrainGpuParams {
+    pub output_sampling: Option<[f32; 2]>,
+    pub curve_len: u32,
+    pub positive: bool,
+    pub packed: Vec<f32>,
+    pub dye_sigma: [[f32; 3]; 3],
+    pub micro_sigma: f32,
+    pub micro_blur: f32,
 }
 
 /// Output gamut compression parameters for the GPU-resident per-pixel pass.

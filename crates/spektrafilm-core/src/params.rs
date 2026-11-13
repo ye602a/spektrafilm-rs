@@ -186,6 +186,12 @@ impl Default for ScannerParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GrainParams {
+    /// Explicit migration opt-in; false preserves existing standalone output.
+    #[serde(default)]
+    pub gpu_multilayer: bool,
+    /// FPW-compatible output grain spatial scale and density residual amount.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_sampling: Option<[f32; 2]>,
     #[serde(default = "default_true")]
     pub active: bool,
     #[serde(default = "default_true")]
@@ -237,6 +243,8 @@ fn default_uniformity_f64() -> [f64; 3] {
 impl Default for GrainParams {
     fn default() -> Self {
         Self {
+            gpu_multilayer: false,
+            output_sampling: None,
             active: true,
             sublayers_active: true,
             agx_particle_area_um2: 0.2,

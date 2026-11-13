@@ -1,3 +1,10 @@
+#[cfg(feature = "wgpu-backend")]
+#[path = "layered_grain.rs"]
+mod layered_grain;
+#[cfg(feature = "wgpu-backend")]
+#[path = "grain_iir.rs"]
+mod grain_iir;
+
 /// wgpu compute backend — dispatches WGSL shaders on GPU via Metal/Vulkan/DX12.
 
 #[cfg(feature = "wgpu-backend")]
@@ -204,6 +211,12 @@ impl WgpuBackend {
         // per-frame cost. No-op (falls back to the blit path) if unsupported.
         let opt_feats = if adapter_info.device_type == wgpu::DeviceType::IntegratedGpu {
             wgpu::Features::MAPPABLE_PRIMARY_BUFFERS & adapter.features()
+        } else {
+            wgpu::Features::empty()
+        };
+        // Wide grain requires the validated NoContraction Vulkan SPIR-V kernel.
+        let opt_feats = opt_feats | if adapter_info.backend == wgpu::Backend::Vulkan {
+            wgpu::Features::PASSTHROUGH_SHADERS & adapter.features()
         } else {
             wgpu::Features::empty()
         };
@@ -5004,7 +5017,7 @@ impl GamutState {
 /// (free at this point — DIR's `density_curve_0` already overwrote
 /// buf_b's role).
 #[cfg(feature = "wgpu-backend")]
-struct GrainState {
+struct SimpleGrainState {
     grain_dispatch: DispatchJob,
     blur: Option<BlurJob>,
     blur_pipe_h: CachedPipelineRef,
@@ -5022,6 +5035,11 @@ fn build_grain_state(
     backend: &WgpuBackend,
 ) -> GrainState {
     use wgpu::util::DeviceExt;
+    if gp.layers.is_some() {
+        return GrainState::Layered(layered_grain::LayeredGrainState::new(
+            device, gp, width, height, buf_a, buf_b, backend,
+        ));
+    }
     let n_pixels = (width as usize) * (height as usize);
 
     let grain_pipe = backend.cached_pipeline(
@@ -5202,16 +5220,16 @@ fn build_grain_state(
         None
     };
 
-    GrainState {
+    GrainState::Simple(SimpleGrainState {
         grain_dispatch,
         blur,
         blur_pipe_h,
         blur_pipe_v,
-    }
+    })
 }
 
 #[cfg(feature = "wgpu-backend")]
-impl GrainState {
+impl SimpleGrainState {
     fn encode_passes(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -5268,4 +5286,26 @@ fn is_uniform(xs: &[f64]) -> bool {
         }
     }
     true
+}
+
+#[cfg(feature = "wgpu-backend")]
+enum GrainState {
+    Simple(SimpleGrainState),
+    Layered(layered_grain::LayeredGrainState),
+}
+
+#[cfg(feature = "wgpu-backend")]
+impl GrainState {
+    fn encode_passes(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        n_pixels: u32,
+        workgroup_size: u32,
+        wg_xy: (u32, u32),
+    ) {
+        match self {
+            Self::Simple(simple) => simple.encode_passes(encoder, n_pixels, workgroup_size, wg_xy),
+            Self::Layered(layered) => layered.encode(encoder),
+        }
+    }
 }
