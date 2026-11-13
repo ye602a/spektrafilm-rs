@@ -1074,10 +1074,7 @@ impl WgpuBackend {
         let scan_normalization = p.scan_normalization;
         let scan_xyz_to_rgb = p.scan_xyz_to_rgb;
 
-        let channels = output_channel_count(image.width, image.height)?;
-        if image.data.len() != channels as usize {
-            return Err(OutputError::InvalidImageData);
-        }
+        let channels = crate::output::validate_rgb_image(image)?;
         let limits = self.device.limits();
         if channels as u64 * 4 > limits.max_buffer_size
             || channels as u64 * 4 > limits.max_storage_buffer_binding_size as u64
@@ -1086,6 +1083,16 @@ impl WgpuBackend {
             || image.height.div_ceil(16) > limits.max_compute_workgroups_per_dimension
         {
             return Err(OutputError::DeviceLimitExceeded);
+        }
+        if p.grain.as_ref().is_some_and(layered_grain::requires_iir)
+            && !grain_iir::supported_by(
+                self.device.adapter_info().backend,
+                self.device.features(),
+            )
+        {
+            // Reject unsupported rendering before changing cache state or
+            // encoding work. The narrow FIR and legacy grain paths need no IIR.
+            return Err(OutputError::UnsupportedGrainIir);
         }
         let n_pixels = channels / 3;
         let img_bytes = n_pixels as usize * 3 * 4;

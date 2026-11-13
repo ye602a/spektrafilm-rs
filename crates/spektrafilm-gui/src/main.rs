@@ -686,11 +686,12 @@ impl App {
     /// for fast iteration; export re-runs the pipeline at f64 (CPU)
     /// using the same params and writes a standard PNG/TIFF/JPEG.
     ///
-    /// The f64 CLI is located via, in order: `$SPEKTRAFILM_F64_CLI`,
-    /// then `spektrafilm-f64` on `PATH`, then `target/release/spektrafilm-f64`
-    /// relative to `CARGO_MANIFEST_DIR`. Build it with
-    /// `cargo build --release --features precision-f64 -p spektrafilm-cli`
-    /// and either rename / symlink it to `spektrafilm-f64` or set the env var.
+    /// The f64 CLI is located via `$SPEKTRAFILM_F64_CLI`, next to the GUI,
+    /// on `PATH`, or in `target/release` relative to `CARGO_MANIFEST_DIR`.
+    /// Build it separately with `cargo build --locked --release -p spektrafilm-cli
+    /// --features precision-f64 --bin spektrafilm-f64 --target-dir target/f64`.
+    /// Point the environment variable at `target/f64/release/spektrafilm-f64`
+    /// (`spektrafilm-f64.exe` on Windows), or place the helper next to the GUI.
     fn export_dialog(&mut self, ctx: &egui::Context) {
         let Some(input_path) = self.image_path.clone() else {
             self.status = "Load an image before exporting.".into();
@@ -2121,9 +2122,10 @@ fn locate_f64_cli() -> Result<PathBuf, String> {
         }
     }
     Err("no f64 CLI found. Build it with \
-         `cargo build --release --features precision-f64 -p spektrafilm-cli`, \
-         rename `target/release/spektrafilm` to `spektrafilm-f64`, \
-         and either put it on PATH or set $SPEKTRAFILM_F64_CLI."
+         `cargo build --locked --release -p spektrafilm-cli --features precision-f64 \
+         --bin spektrafilm-f64 --target-dir target/f64`, then set SPEKTRAFILM_F64_CLI \
+         to target/f64/release/spektrafilm-f64 (spektrafilm-f64.exe on Windows), \
+         or place the helper next to the GUI."
         .into())
 }
 

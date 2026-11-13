@@ -578,8 +578,8 @@ fn consumer_error_or_pre_submission_cancellation_does_not_publish_density_and_re
             assert_eq!(backend.negative_cache_stats().resident_bytes, 0);
             assert_eq!(backend.work_image_bytes(), 0);
 
-            // This proves the pre-submission abort boundary only. Submitted GPU
-            // cancellation/completion is covered separately by backend tests.
+            // This proves the pre-submission abort boundary only. The separate
+            // completion-callback regression below covers submitted work.
             stop.store(false, Ordering::Release);
             let recovered = backend
                 .run_film_chain_region(params, invocation, None)
@@ -589,6 +589,98 @@ fn consumer_error_or_pre_submission_cancellation_does_not_publish_density_and_re
             let hits = backend.negative_cache_stats().hits;
             let repeated = backend
                 .run_film_chain_region(params, invocation, None)
+                .unwrap();
+            assert_pixels_equal(&recovered, &repeated);
+            assert_eq!(backend.negative_cache_stats().hits, hits + 1);
+            assert_eq!(backend.work_image_bytes(), input.pixel_count() as u64 * 24);
+        })
+        .unwrap();
+}
+
+#[test]
+fn cancellation_after_gpu_completion_discards_publication_and_recovers() {
+    let Some(backend) = backend() else { return };
+    let pipeline = pipeline(true);
+    let input = fixture(17, 11, false);
+    let oracle = pipeline.process(input.clone(), &backend);
+    backend.configure_work_images(true);
+    backend.configure_negative_cache(true);
+    let before = backend.negative_cache_stats();
+    let (device, _) = backend.compute_device();
+    let marker = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("submitted-cancellation-marker"),
+        size: 16,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: true,
+    });
+    marker
+        .slice(..)
+        .get_mapped_range_mut()
+        .unwrap()
+        .copy_from_slice(&[0x55; 16]);
+    marker.unmap();
+
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let invocation = FilmRenderOptions {
+        source: Some(SourceIdentity(6)),
+        cancellation: Some(stop.as_ref()),
+        ..Default::default()
+    };
+    pipeline
+        .with_resident_params(&input, |params| {
+            let completed_stop = stop.clone();
+            let cancelled = backend.with_film_output(params, invocation, None, |_, encoder, _| {
+                encoder.clear_buffer(&marker, 0, None);
+                // This callback is attached to this command buffer. It cannot
+                // request cancellation until the submitted GPU writes finish;
+                // it does not depend on sleeps or a racing host thread.
+                encoder.on_submitted_work_done(move || {
+                    completed_stop.store(true, Ordering::Release);
+                });
+                assert!(!stop.load(Ordering::Acquire));
+                Ok(())
+            });
+            assert_eq!(cancelled, Err(OutputError::Cancelled));
+            assert!(stop.load(Ordering::Acquire), "completion callback must run");
+
+            let slice = marker.slice(..);
+            let (tx, rx) = std::sync::mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+            let timeout = std::time::Duration::from_secs(30);
+            device
+                .poll(wgpu::PollType::Wait {
+                    submission_index: None,
+                    timeout: Some(timeout),
+                })
+                .expect("submitted cancellation marker completion");
+            rx.recv_timeout(timeout)
+                .expect("submitted cancellation marker map callback")
+                .expect("submitted cancellation marker mapping");
+            let mapped = slice.get_mapped_range().unwrap();
+            assert_eq!(
+                &*mapped, &[0; 16],
+                "submitted writes must have executed; cancellation cannot undo them"
+            );
+            drop(mapped);
+            marker.unmap();
+
+            let cancelled_stats = backend.negative_cache_stats();
+            assert_eq!(cancelled_stats.misses, before.misses + 1);
+            assert_eq!(cancelled_stats.stores, before.stores);
+            assert_eq!(cancelled_stats.resident_bytes, 0);
+            assert_eq!(backend.work_image_bytes(), 0);
+
+            stop.store(false, Ordering::Release);
+            let recovered = backend
+                .run_film_chain_with_options(params, invocation)
+                .unwrap();
+            assert_pixels_equal(&oracle, &recovered);
+            assert_eq!(backend.negative_cache_stats().stores, before.stores + 1);
+            let hits = backend.negative_cache_stats().hits;
+            let repeated = backend
+                .run_film_chain_with_options(params, invocation)
                 .unwrap();
             assert_pixels_equal(&recovered, &repeated);
             assert_eq!(backend.negative_cache_stats().hits, hits + 1);

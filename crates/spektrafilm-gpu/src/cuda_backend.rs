@@ -5,6 +5,7 @@
 //! camera lens blur, halation, DIR couplers, grain, density curves, enlarger
 //! diffusion, print/scan spectral reductions, glare, output gamut compression,
 //! scanner lens blur, unsharp, and one readback.
+//! The explicit multilayer-grain model is not implemented by this backend.
 
 use std::sync::Arc;
 
@@ -15,7 +16,20 @@ use cudarc::nvrtc::compile_ptx;
 use spektrafilm_math::image::ImageBuf;
 use spektrafilm_math::precision::Scalar;
 
-use crate::{ComputeBackend, FilmChainParams, FrontPass, Lut3D, cpu_backend};
+use crate::{
+    ComputeBackend, FilmChainParams, FilmRenderOptions, FrontPass, GrainGpuParams,
+    Lut3D, OutputError, cpu_backend,
+};
+
+// Check before touching CUDA state: falling back to the simple sampler would
+// silently change the explicitly selected physical grain model.
+fn validate_cuda_grain(grain: Option<&GrainGpuParams>) -> Result<(), OutputError> {
+    if grain.is_some_and(|grain| grain.layers.is_some()) {
+        Err(OutputError::UnsupportedMultilayerGrain)
+    } else {
+        Ok(())
+    }
+}
 
 #[cfg(not(feature = "precision-f64"))]
 fn scalars_to_f32(v: &[Scalar]) -> std::borrow::Cow<'_, [f32]> {
@@ -2281,6 +2295,9 @@ impl ComputeBackend for CudaBackend {
     }
 
     fn try_run_film_chain(&self, params: &FilmChainParams<'_>) -> Option<ImageBuf> {
+        validate_cuda_grain(params.grain.as_ref()).expect(
+            "CUDA cannot render multilayer grain; use the checked rendering API for an error or use the Vulkan backend",
+        );
         match self.run_film_chain_resident(params) {
             Ok(out) => out,
             Err(e) => {
@@ -2288,6 +2305,19 @@ impl ComputeBackend for CudaBackend {
                 None
             }
         }
+    }
+
+    fn try_run_film_chain_with_options(
+        &self,
+        params: &FilmChainParams<'_>,
+        options: FilmRenderOptions<'_>,
+    ) -> Result<Option<ImageBuf>, OutputError> {
+        options.check_cancelled()?;
+        crate::output::validate_rgb_image(params.image)?;
+        validate_cuda_grain(params.grain.as_ref())?;
+        let result = self.try_run_film_chain(params);
+        options.check_cancelled()?;
+        Ok(result)
     }
 
     fn resident_chain_applies_post_scan(&self) -> bool {
@@ -2300,5 +2330,41 @@ impl ComputeBackend for CudaBackend {
 
     fn name(&self) -> &str {
         &self.device_name
+    }
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+
+    #[test]
+    fn multilayer_grain_selection_is_rejected_without_initializing_cuda() {
+        let mut grain = GrainGpuParams {
+            layers: Some(crate::LayeredGrainGpuParams {
+                output_sampling: Some([1., 1.]),
+                curve_len: 2,
+                positive: false,
+                packed: vec![1.; 66],
+                dye_sigma: [[0.; 3]; 3],
+                micro_sigma: 0.,
+                micro_blur: 0.,
+            }),
+            density_min: [0.; 3],
+            density_max: [3.; 3],
+            n_particles_per_pixel: [30.; 3],
+            grain_uniformity: [0.98; 3],
+            n_sub_layers: 1,
+            base_seed: 0,
+            grain_blur: 0.,
+            monochrome: false,
+        };
+        assert_eq!(
+            validate_cuda_grain(Some(&grain)),
+            Err(OutputError::UnsupportedMultilayerGrain),
+            "even unblurred multilayer grain must not enter the simple CUDA sampler",
+        );
+        grain.layers = None;
+        assert_eq!(validate_cuda_grain(Some(&grain)), Ok(()));
+        assert_eq!(validate_cuda_grain(None), Ok(()));
     }
 }

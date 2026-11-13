@@ -5,9 +5,16 @@ use wgpu::util::DeviceExt;
 
 pub(super) type GrainJob = (DispatchJob, (u32, u32));
 
+pub(super) fn supported_by(backend: wgpu::Backend, features: wgpu::Features) -> bool {
+    // Passthrough is shared by several backends, but this checked-in kernel
+    // contains only Vulkan SPIR-V, not Metal MSL, DX12 DXIL or browser WGSL.
+    backend == wgpu::Backend::Vulkan
+        && features.contains(wgpu::Features::PASSTHROUGH_SHADERS)
+}
+
 fn pipeline(backend: &WgpuBackend) -> CachedPipelineRef {
     const SPIRV: &[u8] = include_bytes!("../../spektrafilm-shaders/vulkan/grain_iir.spv");
-    assert!(backend.device.features().contains(wgpu::Features::PASSTHROUGH_SHADERS),
+    assert!(supported_by(backend.device.adapter_info().backend, backend.device.features()),
         "wide grain IIR requires validated Vulkan SPIR-V; narrow FIR remains available on other backends");
     let mut cache = backend.pipeline_cache.lock().unwrap();
     let key = SPIRV.as_ptr() as usize;
@@ -177,6 +184,18 @@ pub(super) fn append_pass(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn precise_iir_requires_vulkan_even_when_passthrough_is_available() {
+        for backend in wgpu::Backend::ALL {
+            assert!(!supported_by(backend, wgpu::Features::empty()), "{backend:?}");
+            assert_eq!(
+                supported_by(backend, wgpu::Features::PASSTHROUGH_SHADERS),
+                backend == wgpu::Backend::Vulkan,
+                "passthrough availability alone does not select the shader language: {backend:?}",
+            );
+        }
+    }
 
     // Independent f64 recurrence using the *rounded* f32 forward plane,
     // following pinned Lab's gpu_vulkan_smoke.cpp numerical contract.

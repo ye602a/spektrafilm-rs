@@ -610,6 +610,7 @@ impl Pipeline {
         image: &ImageBuf,
         backend: &dyn ComputeBackend,
     ) -> Option<ImageBuf> {
+        spektrafilm_gpu::output::validate_rgb_image(image).ok()?;
         if self.tc_lut.is_none() && self.mallett_core.is_none() {
             return None;
         }
@@ -639,9 +640,12 @@ impl Pipeline {
         options: spektrafilm_gpu::FilmRenderOptions<'_>,
     ) -> Result<Option<ImageBuf>, spektrafilm_gpu::output::OutputError> {
         options.check_cancelled()?;
-        let out = self.with_resident_params(image, |params| {
-            backend.try_run_film_chain_with_options(params, options)
-        }).transpose()?.flatten();
+        let out = self
+            .try_with_resident_params(image, |params| {
+                backend.try_run_film_chain_with_options(params, options)
+            })?
+            .transpose()?
+            .flatten();
         // Successful completion is committed by the backend; a later cancel
         // must not turn an already-published result into a cancelled request.
         Ok(out.map(|out| {
@@ -658,13 +662,28 @@ impl Pipeline {
     /// RGB16 or same-device output without duplicating the film pipeline.
     /// The input is already at its chosen working resolution, as for
     /// `process_resident_borrowed`; display crops belong after this full chain.
+    /// Invalid input returns `None`; use `try_with_resident_params` to retain
+    /// the geometry or data-length error.
     pub fn with_resident_params<R>(
         &self,
         image: &ImageBuf,
         consume: impl FnOnce(&spektrafilm_gpu::FilmChainParams<'_>) -> R,
     ) -> Option<R> {
+        self.try_with_resident_params(image, consume).ok().flatten()
+    }
+
+    /// Checked parameter preparation for scoped output consumers. Rejects empty,
+    /// overflowing or malformed RGB input before auto-exposure can index it and
+    /// before the consumer can encode or publish any work. A valid input still
+    /// returns `Ok(None)` when this pipeline has no resident spectral route.
+    pub fn try_with_resident_params<R>(
+        &self,
+        image: &ImageBuf,
+        consume: impl FnOnce(&spektrafilm_gpu::FilmChainParams<'_>) -> R,
+    ) -> Result<Option<R>, spektrafilm_gpu::output::OutputError> {
+        spektrafilm_gpu::output::validate_rgb_image(image)?;
         if self.tc_lut.is_none() && self.mallett_core.is_none() {
-            return None;
+            return Ok(None);
         }
         let color_ref = crate::color_reference::ColorReference::compute(
             &self.film,
@@ -673,7 +692,7 @@ impl Pipeline {
             &self.print_illuminant,
             self.print_exposure_factor,
         );
-        self.with_gpu_params(image, &color_ref, consume)
+        Ok(self.with_gpu_params(image, &color_ref, consume))
     }
 
     /// Resize the working image by `io.upscale_factor` (bicubic), mirroring

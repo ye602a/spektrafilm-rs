@@ -67,9 +67,9 @@ publication token. A snapshot can be published only after successful completion
 of the render, with its expected exact byte size, while its ticket is still the
 latest eligible request and the cache generation is unchanged. Thus an older
 concurrent render cannot replace a newer request's result. Reconfiguration,
-explicit clearing, budget changes, or an oversized/empty render invalidate
-pending publication tokens. Dropping a token after a failure or cancellation
-publishes nothing.
+explicit clearing, budget changes, or a request exceeding the retention budget
+invalidate pending publication tokens. Invalid image geometry is rejected before
+cache lookup. Dropping a token after a failure or cancellation publishes nothing.
 
 The backend makes the final cancellation decision immediately before committing
 successful output and cache publication, after GPU consumers and any readback
@@ -112,8 +112,10 @@ cargo test --locked -p spektrafilm-gpu --features openblas-src/system --lib nega
 SPEKTRAFILM_REQUIRE_GPU=1 cargo test --locked -p spektrafilm-core -p spektrafilm-gpu --features openblas-src/system --test negative_cache
 ```
 
-GPU cancellation during in-flight submissions and output consumption requires the
-shared render/output lifecycle regression in addition to this pre-cancel test.
+The shared output regression also raises cancellation from the submitted command's
+completion callback. Its destination write has already executed, but the request
+returns an error, publishes no density, and can be retried successfully. This does
+not establish interruption of GPU execution or recovery from device loss.
 
 Software Vulkan regression does not replace target-device and host-image
 acceptance. Performance measurements must include key construction, GPU copies,

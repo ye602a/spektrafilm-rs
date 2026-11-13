@@ -29,6 +29,10 @@ pub enum OutputError {
     DeviceLimitExceeded,
     #[error("GPU submission, completion, or buffer mapping failed")]
     GpuFailure,
+    #[error("wide multilayer grain requires a device with the validated Vulkan IIR shader capability")]
+    UnsupportedGrainIir,
+    #[error("this GPU backend does not support the selected multilayer grain model; use the Vulkan backend")]
+    UnsupportedMultilayerGrain,
     #[error("source, crop and output dimensions must all be positive")]
     EmptyDimensions,
     #[error("the display crop lies outside the full-resolution output")]
@@ -149,6 +153,17 @@ pub fn output_channel_count(width: u32, height: u32) -> Result<u32, OutputError>
         .checked_mul(height)
         .and_then(|pixels| pixels.checked_mul(3))
         .ok_or(OutputError::ChannelCountOverflow)
+}
+
+/// Validate an input before CPU parameter preparation or GPU encoding.
+/// `ImageBuf` exposes its fields, so callers may supply inconsistent dimensions
+/// even when they do not use its checked constructor.
+pub fn validate_rgb_image(image: &spektrafilm_math::image::ImageBuf) -> Result<u32, OutputError> {
+    let channels = output_channel_count(image.width, image.height)?;
+    if image.data.len() != channels as usize {
+        return Err(OutputError::InvalidImageData);
+    }
+    Ok(channels)
 }
 
 #[cfg(test)]
