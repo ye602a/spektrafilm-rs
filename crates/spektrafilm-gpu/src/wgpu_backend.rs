@@ -184,6 +184,7 @@ impl WgpuBackend {
             required_features: opt_feats,
             required_limits: limits,
             memory_hints: wgpu::MemoryHints::Performance,
+            ..Default::default()
         }
     }
 
@@ -245,8 +246,8 @@ impl WgpuBackend {
                 self.device
                     .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("compute_pipeline_layout"),
-                        bind_group_layouts: &[&bind_group_layout],
-                        push_constant_ranges: &[],
+                        bind_group_layouts: &[Some(&bind_group_layout)],
+                        immediate_size: 0,
                     });
             let pipeline = self
                 .device
@@ -854,6 +855,7 @@ impl WgpuBackend {
             });
             buf.slice(..)
                 .get_mapped_range_mut()
+                .expect("mapped input buffer")
                 .copy_from_slice(bytemuck::cast_slice(&input_f32));
             buf.unmap();
             buf
@@ -1747,8 +1749,8 @@ impl WgpuBackend {
                 self.device
                     .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("compute_pipeline_layout"),
-                        bind_group_layouts: &[&bind_group_layout],
-                        push_constant_ranges: &[],
+                        bind_group_layouts: &[Some(&bind_group_layout)],
+                        immediate_size: 0,
                     });
             let pipeline = self
                 .device
