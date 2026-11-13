@@ -29,3 +29,26 @@ jobs:
 
       - name: Test CPU reference math and film-model crates
         run: cargo test --locked -p spektrafilm-math -p spektrafilm-model -p spektrafilm-core --lib
+
+  linux-vulkan-software:
+    name: Linux Vulkan software compute smoke
+    runs-on: ubuntu-24.04
+    env:
+      SPEKTRAFILM_REQUIRE_GPU: "1"
+      WGPU_BACKEND: vulkan
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Mesa software Vulkan and OpenBLAS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mesa-vulkan-drivers vulkan-tools libopenblas-dev
+
+      - name: Inspect available Vulkan adapters
+        run: vulkaninfo --summary
+
+      - name: Require a real Vulkan device and submit GPU work
+        run: cargo test --locked -p spektrafilm-gpu --test host_device -- --nocapture
