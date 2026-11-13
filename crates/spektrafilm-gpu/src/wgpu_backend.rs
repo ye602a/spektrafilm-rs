@@ -108,21 +108,22 @@ struct CachedPipeline {
 #[cfg(feature = "wgpu-backend")]
 impl WgpuBackend {
     pub fn new() -> Option<Self> {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: None,
             force_fallback_adapter: false,
-        }))?;
+            ..Default::default()
+        })).ok()?;
 
         // Use the same requirements for internally and externally created devices.
         let adapter_info = adapter.get_info();
         let (device, queue) = pollster::block_on(
-            adapter.request_device(&Self::device_descriptor(&adapter), None),
+            adapter.request_device(&Self::device_descriptor(&adapter)),
         )
         .ok()?;
 
@@ -183,6 +184,7 @@ impl WgpuBackend {
             required_features: opt_feats,
             required_limits: limits,
             memory_hints: wgpu::MemoryHints::Performance,
+            ..Default::default()
         }
     }
 
@@ -244,8 +246,8 @@ impl WgpuBackend {
                 self.device
                     .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("compute_pipeline_layout"),
-                        bind_group_layouts: &[&bind_group_layout],
-                        push_constant_ranges: &[],
+                        bind_group_layouts: &[Some(&bind_group_layout)],
+                        immediate_size: 0,
                     });
             let pipeline = self
                 .device
@@ -363,10 +365,10 @@ impl WgpuBackend {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             tx.send(r).unwrap();
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).expect("GPU work completion");
         rx.recv().unwrap().unwrap();
 
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().expect("completed buffer mapping");
         let result: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
         drop(data);
         readback.unmap();
@@ -544,9 +546,9 @@ impl WgpuBackend {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             tx.send(r).unwrap();
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).expect("GPU work completion");
         rx.recv().unwrap().unwrap();
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().expect("completed buffer mapping");
         let out_f32: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
         drop(data);
         readback.unmap();
@@ -771,12 +773,12 @@ impl WgpuBackend {
             let slice = rb.slice(..);
             slice.map_async(wgpu::MapMode::Read, |r| r.unwrap());
         }
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).expect("GPU work completion");
 
         let mut out_imgs = Vec::with_capacity(sigmas.len());
         for rb in &readbacks {
             let slice = rb.slice(..);
-            let data = slice.get_mapped_range();
+            let data = slice.get_mapped_range().expect("completed buffer mapping");
             let chunk: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
             out_imgs.push(ImageBuf::from_data(w, h, f32_to_scalars(chunk)));
             drop(data);
@@ -853,6 +855,7 @@ impl WgpuBackend {
             });
             buf.slice(..)
                 .get_mapped_range_mut()
+                .expect("mapped input buffer")
                 .copy_from_slice(bytemuck::cast_slice(&input_f32));
             buf.unmap();
             buf
@@ -1684,10 +1687,10 @@ impl WgpuBackend {
         slice.map_async(wgpu::MapMode::Read, move |r| {
             tx.send(r).unwrap();
         });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device.poll(wgpu::PollType::Wait { submission_index: None, timeout: None }).expect("GPU work completion");
         rx.recv().unwrap().unwrap();
         let gpu_wait_ms = t_start.elapsed().as_secs_f32() * 1000.0 - cpu_setup_ms;
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().expect("completed buffer mapping");
         let out_f32: Vec<f32> = bytemuck::cast_slice(&data).to_vec();
         drop(data);
         map_target.unmap();
@@ -1746,8 +1749,8 @@ impl WgpuBackend {
                 self.device
                     .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                         label: Some("compute_pipeline_layout"),
-                        bind_group_layouts: &[&bind_group_layout],
-                        push_constant_ranges: &[],
+                        bind_group_layouts: &[Some(&bind_group_layout)],
+                        immediate_size: 0,
                     });
             let pipeline = self
                 .device
